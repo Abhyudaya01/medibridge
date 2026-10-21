@@ -71,7 +71,7 @@ public class X12ApiTests(ClaimsApiFactory factory) : IClassFixture<ClaimsApiFact
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         var result = body.GetProperty("interchanges")[0];
         Assert.Equal("Accepted", result.GetProperty("acknowledgment").GetProperty("status").GetString());
-        Assert.Equal(new[] { "Succeeded", "Suppressed" }, result.GetProperty("outcomes").EnumerateArray().Select(c => c.GetProperty("status").GetString()));
+        Assert.Equal(new[] { "PendingProcessing", "Suppressed" }, result.GetProperty("outcomes").EnumerateArray().Select(c => c.GetProperty("status").GetString()));
     }
 
     [Fact]

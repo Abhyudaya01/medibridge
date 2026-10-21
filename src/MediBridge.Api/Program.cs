@@ -9,40 +9,51 @@ builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.C
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options => options.SwaggerDoc("v1", new Microsoft.OpenApi.OpenApiInfo
 {
-    Title = "MediBridge synthetic claims API", Version = "0.3.0",
+    Title = "MediBridge synthetic claims API", Version = "0.4.0",
     Description = "Synthetic data only. Not affiliated with any payer. No real member or provider data."
 }));
 builder.Services.AddSingleton<ClaimWriteLock>();
 builder.Services.AddScoped<ClaimStore>();
 builder.Services.AddScoped<X12Intake>();
-builder.Services.AddDbContext<ClaimsDbContext>(options =>
+builder.Services.AddSingleton(TimeProvider.System);
+var faultOptions = builder.Configuration.GetSection("FaultInjection").Get<FaultOptions>() ?? new();
+if (faultOptions.TransientFailureRate is < 0 or > 1 || double.IsNaN(faultOptions.TransientFailureRate)
+    || faultOptions.AddedLatencyMs is < 0 or > 10000
+    || (faultOptions.CrashAfterStep is not null && faultOptions.CrashAfterStep is not ("AfterClaimCommit" or "AfterLease" or "AfterAttemptStarted" or "AfterHandlerCommit")))
+    throw new InvalidOperationException("Invalid fault injection configuration.");
+builder.Services.AddSingleton<IFaultInjector>(new ConfigurableFaultInjector(faultOptions));
+builder.Services.AddSingleton<OutboxDispatcher>();
+builder.Services.AddSingleton<OutboxSignal>();
+builder.Services.AddSingleton<IdempotencyGate>();
+builder.Services.AddHostedService<OutboxWorker>();
+builder.Services.AddDbContext<SqliteClaimsDbContext>(options =>
 {
-    var sql = builder.Configuration.GetConnectionString("Sql");
-    if (!string.IsNullOrWhiteSpace(sql)) options.UseSqlServer(sql);
-    else
-    {
-        var onAppService = OperatingSystem.IsLinux() && !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"));
-        var path = builder.Configuration["Database:Path"]
-            ?? (onAppService ? "/home/data/medibridge.db" : Path.Combine(builder.Environment.ContentRootPath, "Data", "medibridge.db"));
-        path = Path.GetFullPath(path, builder.Environment.ContentRootPath);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        options.UseSqlite(new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = path }.ToString());
-    }
+    var onAppService = OperatingSystem.IsLinux() && !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"));
+    var path = builder.Configuration["Database:Path"]
+        ?? (onAppService ? "/home/data/medibridge.db" : Path.Combine(builder.Environment.ContentRootPath, "Data", "medibridge.db"));
+    path = Path.GetFullPath(path, builder.Environment.ContentRootPath);
+    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+    options.UseSqlite(new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = path }.ToString());
 });
+builder.Services.AddDbContext<SqlClaimsDbContext>(options => options.UseSqlServer(builder.Configuration.GetConnectionString("Sql")));
+builder.Services.AddScoped<ClaimsDbContext>(services => string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("Sql"))
+    ? services.GetRequiredService<SqliteClaimsDbContext>() : services.GetRequiredService<SqlClaimsDbContext>());
 
 var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     await scope.ServiceProvider.GetRequiredService<ClaimsDbContext>().InitializeAsync();
-    await SyntheticSeed.RunAsync(scope.ServiceProvider.GetRequiredService<ClaimStore>());
+    if (builder.Configuration.GetValue("Seed:Enabled", true))
+        await SyntheticSeed.RunAsync(scope.ServiceProvider.GetRequiredService<ClaimStore>());
 }
 
+app.UseMiddleware<IdempotencyMiddleware>();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseSwagger();
 app.UseSwaggerUI();
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok", version = "0.3.0" }));
+app.MapGet("/health", () => Results.Ok(new { status = "ok", version = "0.4.0" }));
 app.MapGet("/api/claims", async (ClaimsDbContext db, CancellationToken cancellationToken) =>
     Results.Ok(await db.Claims.AsNoTracking().OrderBy(c => c.Id).ToListAsync(cancellationToken)));
 
@@ -77,7 +88,7 @@ app.MapPost("/api/claims", async (ClaimSubmission request, ClaimStore store, Can
         ClaimStatus.Rejected => Results.UnprocessableEntity(response),
         ClaimStatus.Suppressed => Results.Ok(response),
         ClaimStatus.ManualReview => Results.Accepted($"/api/claims/{Uri.EscapeDataString(claim.Id)}", response),
-        _ => Results.Created($"/api/claims/{Uri.EscapeDataString(claim.Id)}", response)
+        _ => Results.Accepted($"/api/claims/{Uri.EscapeDataString(claim.Id)}", response)
     };
 });
 
@@ -115,6 +126,12 @@ app.MapPost("/api/x12/837", async (HttpRequest request, X12Intake intake, Cancel
 }).Accepts<string>("text/plain").Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status422UnprocessableEntity)
   .Produces(StatusCodes.Status415UnsupportedMediaType).Produces(StatusCodes.Status413PayloadTooLarge)
   .WithSummary("Import the synthetic 837P subset and return per-interchange 999-style acknowledgments.");
+
+app.MapGet("/api/queues/correction", async (ClaimsDbContext db, CancellationToken ct) =>
+    Results.Ok(await db.Corrections.AsNoTracking().OrderBy(c => c.ClaimId).ToListAsync(ct)));
+app.MapGet("/api/outbox", async (ClaimsDbContext db, CancellationToken ct) =>
+    Results.Ok(await db.Outbox.AsNoTracking().OrderBy(m => m.ClaimId)
+        .Select(m => new { m.Id, m.ClaimId, m.State, m.Deliveries, m.NextAttemptAt, m.LeaseUntil }).ToListAsync(ct)));
 
 app.Run();
 

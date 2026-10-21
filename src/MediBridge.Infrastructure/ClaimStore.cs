@@ -37,7 +37,7 @@ public sealed class ClaimStore(ClaimsDbContext db, ClaimWriteLock writeLock)
                 Track(result, null);
                 await db.SaveChangesAsync(cancellationToken);
             }
-            return result;
+            return result with { Timeline = db.ClaimEvents.Local.Where(e => e.ClaimId == claim.Id).OrderBy(e => e.Id).ToList() };
         }
         finally { writeLock.Gate.Release(); }
     }
@@ -48,9 +48,10 @@ public sealed class ClaimStore(ClaimsDbContext db, ClaimWriteLock writeLock)
     private void Track(ProcessingResult result, string? key)
     {
         db.Claims.Add(result.Claim);
-        if (result.Claim.Status is ClaimStatus.Succeeded or ClaimStatus.ManualReview or ClaimStatus.RetryPending)
+        if (result.Claim.Status is ClaimStatus.Succeeded or ClaimStatus.ManualReview or ClaimStatus.RetryPending or ClaimStatus.PendingProcessing or ClaimStatus.Processing)
             db.Entry(result.Claim).Property("DuplicateKey").CurrentValue = key;
         db.ClaimEvents.AddRange(result.Timeline);
+        ReliableWrites.Track(db, result.Claim, result.Timeline[0].Timestamp);
     }
 
     internal static bool IsUniqueViolation(DbUpdateException exception) => exception.InnerException switch

@@ -11,7 +11,7 @@
 <body>
   <main>
     <header>
-      <div class="brand"><span class="mark" aria-hidden="true">M</span><div><p class="eyebrow">Exception &amp; recovery engine</p><h1>MediBridge</h1></div><span class="version">v0.3.0</span></div>
+      <div class="brand"><span class="mark" aria-hidden="true">M</span><div><p class="eyebrow">Exception &amp; recovery engine</p><h1>MediBridge</h1></div><span class="version">v0.4.0</span></div>
       <p class="description">A healthcare claims and prior authorization exception and recovery engine on synthetic data. Explore deterministic claim validation, simulated downstream recovery, duplicate suppression, and rule-version review through an auditable transaction timeline.</p>
       <p class="notice"><strong>Synthetic data. Not affiliated with any payer.</strong> Use fabricated identifiers only. No external healthcare services are called.</p>
       <nav aria-label="Project links"><a href="/health">API health</a><a href="/swagger">Swagger API</a><a href="https://github.com/Abhyudaya01/medibridge">GitHub repository</a></nav>
@@ -30,13 +30,17 @@
       <section class="panel monitor" aria-labelledby="monitor-title">
         <h2 id="monitor-title">Transaction monitor</h2>
         <p class="muted">Select a claim to inspect its event history.</p>
-        <div class="table-scroll"><table><caption class="sr-only">Synthetic claims and processing outcomes</caption><thead><tr><th scope="col">Claim / member</th><th scope="col">Service date</th><th scope="col">Amount</th><th scope="col">Status</th><th scope="col">Category</th></tr></thead><tbody id="claims-body"></tbody></table></div>
+        <div class="table-scroll"><table><caption class="sr-only">Synthetic claims and processing outcomes</caption><thead><tr><th scope="col">Claim / member</th><th scope="col">Service date</th><th scope="col">Amount</th><th scope="col">Status</th><th scope="col">Category</th><th scope="col">Processing</th></tr></thead><tbody id="claims-body"></tbody></table></div>
       </section>
       <section class="panel timeline-panel" aria-labelledby="timeline-title">
         <h2 id="timeline-title">Claim timeline</h2>
         <p id="timeline-summary" class="muted">Choose a transaction to view its timeline.</p>
         <ol id="timeline" class="timeline"></ol>
       </section>
+    </div>
+    <div class="workspace">
+      <section class="panel" aria-labelledby="correction-title"><h2 id="correction-title">Correction queue</h2><p class="muted">Business-rule failures require correction and are never retried automatically.</p><ul id="correction-list"></ul></section>
+      <section class="panel" aria-labelledby="outbox-title"><h2 id="outbox-title">Transactional outbox</h2><p class="muted">At-least-once delivery with idempotent handling. Use Refresh claims to update processing state.</p><ul id="outbox-list"></ul></section>
     </div>
     <section class="panel" aria-labelledby="x12-title">
       <p class="eyebrow">837P intake · documented segment subset</p>
@@ -70,7 +74,7 @@
       <div id="submission-result" role="status" aria-live="polite"></div>
     </section>
     <section aria-labelledby="roadmap-title"><h2 id="roadmap-title">Roadmap</h2><ol class="roadmap"><li><strong>Phase 1</strong><h3>Recovery workflows</h3><p>Extend the Phase 0 validation and audit foundation with richer exception handling.</p></li><li><strong>Phase 2</strong><h3>Prior authorization</h3><p>Expand synthetic authorization scenarios, rule versions, and review workflows.</p></li><li><strong>Phase 3</strong><h3>Reliability &amp; measurement</h3><p>Add load tests, fault injection, and measured benchmark results.</p></li></ol></section>
-    <footer>Portfolio simulation · Synthetic records only · Chunk 1a: X12 intake</footer>
+    <footer>Portfolio simulation · Synthetic records only · Chunk 1b: reliable processing</footer>
   </main>
 </body>
 </html>

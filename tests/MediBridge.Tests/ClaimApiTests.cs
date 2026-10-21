@@ -9,10 +9,20 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace MediBridge.Tests;
 
-public sealed class ClaimsApiFactory : WebApplicationFactory<Program>
+public class ClaimsApiFactory : WebApplicationFactory<Program>
 {
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"medibridge-tests-{Guid.NewGuid():N}.db");
-    protected override void ConfigureWebHost(IWebHostBuilder builder) => builder.UseSetting("Database:Path", _path);
+    protected override void ConfigureWebHost(IWebHostBuilder builder) => builder.UseSetting("Database:Path", _path).UseSetting("Outbox:Enabled", "false");
+    public new HttpClient CreateClient() => CreateDefaultClient(new KeyHandler());
+    private sealed class KeyHandler : DelegatingHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.Method == HttpMethod.Post && !request.Headers.Contains("Idempotency-Key"))
+                request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
+            return base.SendAsync(request, cancellationToken);
+        }
+    }
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
@@ -32,8 +42,8 @@ public class ClaimApiTests(ClaimsApiFactory factory) : IClassFixture<ClaimsApiFa
         var claims = await client.GetFromJsonAsync<JsonElement>("/api/claims");
         foreach (var (id, status, category, outcomes) in new[]
         {
-            ("CLM-1001", "Rejected", "BusinessRule", new[] { "Received", "Rejected" }),
-            ("CLM-1002", "Succeeded", "None", new[] { "Received", "Passed", "Passed", "Passed", "Timeout", "RetryPending", "Retrying", "Succeeded" }),
+            ("CLM-1001", "Rejected", "BusinessRule", new[] { "Received", "Rejected", "Queued" }),
+            ("CLM-1002", "PendingProcessing", "None", new[] { "Received", "Passed", "Passed", "Passed", "PendingProcessing" }),
             ("CLM-1003", "Suppressed", "Duplicate", new[] { "Received", "Passed", "Suppressed" }),
             ("CLM-1004", "ManualReview", "RuleVersionConflict", new[] { "Received", "Passed", "Passed", "ManualReview" })
         })
@@ -59,10 +69,10 @@ public class ClaimApiTests(ClaimsApiFactory factory) : IClassFixture<ClaimsApiFa
         using var client = factory.CreateClient();
         var request = Request();
         var response = await client.PostAsJsonAsync("/api/claims", request);
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         Assert.Equal($"/api/claims/{request.Id}", response.Headers.Location?.ToString());
         var result = await client.GetFromJsonAsync<JsonElement>(response.Headers.Location);
-        Assert.Equal("Succeeded", result.GetProperty("claim").GetProperty("status").GetString());
+        Assert.Equal("PendingProcessing", result.GetProperty("claim").GetProperty("status").GetString());
         Assert.True(result.GetProperty("timeline").GetArrayLength() >= 5);
     }
 
@@ -79,7 +89,7 @@ public class ClaimApiTests(ClaimsApiFactory factory) : IClassFixture<ClaimsApiFa
         Assert.Equal("ProviderNpi", failure.GetProperty("field").GetString());
         Assert.False(string.IsNullOrWhiteSpace(failure.GetProperty("suggestedFix").GetString()));
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/api/claims/{request.Id}")).StatusCode);
-        Assert.Equal(2, detail.GetProperty("timeline").GetArrayLength());
+        Assert.Equal(3, detail.GetProperty("timeline").GetArrayLength());
     }
 
     [Fact]
@@ -87,7 +97,7 @@ public class ClaimApiTests(ClaimsApiFactory factory) : IClassFixture<ClaimsApiFa
     {
         using var client = factory.CreateClient();
         var request = Request();
-        Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/claims", request)).StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, (await client.PostAsJsonAsync("/api/claims", request)).StatusCode);
         var duplicate = await client.PostAsJsonAsync("/api/claims", request with { Id = $"CLM-{Guid.NewGuid():N}" });
         Assert.Equal(HttpStatusCode.OK, duplicate.StatusCode);
         var body = await duplicate.Content.ReadFromJsonAsync<JsonElement>();
@@ -104,7 +114,7 @@ public class ClaimApiTests(ClaimsApiFactory factory) : IClassFixture<ClaimsApiFa
         using var client = factory.CreateClient();
         var request = Request();
         var results = await Task.WhenAll(client.PostAsJsonAsync("/api/claims", request), client.PostAsJsonAsync("/api/claims", request with { Id = $"CLM-{Guid.NewGuid():N}" }));
-        Assert.Single(results, r => r.StatusCode == HttpStatusCode.Created);
+        Assert.Single(results, r => r.StatusCode == HttpStatusCode.Accepted);
         Assert.Single(results, r => r.StatusCode == HttpStatusCode.OK);
     }
 
@@ -113,9 +123,9 @@ public class ClaimApiTests(ClaimsApiFactory factory) : IClassFixture<ClaimsApiFa
     {
         using var client = factory.CreateClient();
         var retry = await client.PostAsJsonAsync("/api/claims", Request() with { Simulation = MediBridge.Core.Simulation.DownstreamTimeout });
-        Assert.Equal(HttpStatusCode.Created, retry.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, retry.StatusCode);
         var body = await retry.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Contains(body.GetProperty("timeline").EnumerateArray(), e => e.GetProperty("outcome").GetString() == "RetryPending");
+        Assert.Contains(body.GetProperty("timeline").EnumerateArray(), e => e.GetProperty("outcome").GetString() == "PendingProcessing");
         var review = await client.PostAsJsonAsync("/api/claims", Request() with { RuleVersion = "phase0-v0" });
         Assert.Equal(HttpStatusCode.Accepted, review.StatusCode);
         body = await review.Content.ReadFromJsonAsync<JsonElement>();

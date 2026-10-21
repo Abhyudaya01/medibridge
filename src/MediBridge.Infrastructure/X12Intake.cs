@@ -30,7 +30,8 @@ public sealed class X12Intake(ClaimsDbContext db, ClaimWriteLock writeLock)
                 for (var attempt = 0; ; attempt++)
                 {
                     db.ChangeTracker.Clear();
-                    await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+                    var ownsTransaction = db.Database.CurrentTransaction is null;
+                    await using var transaction = ownsTransaction ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
                     try
                     {
                         List<X12ClaimOutcome> outcomes = [];
@@ -56,16 +57,17 @@ public sealed class X12Intake(ClaimsDbContext db, ClaimWriteLock writeLock)
                                 Detail = JsonSerializer.Serialize(new { interchange.ControlNumber, parsed.GroupControlNumber, parsed.TransactionControlNumber, parsed.SegmentPosition, parsed.DiagnosisCodes })
                             });
                             db.ClaimEvents.AddRange(result.Timeline);
+                            ReliableWrites.Track(db, claim, timestamp);
                             outcomes.Add(new(claim.Id, claim.Status.ToString(), claim, claim.ValidationFailures));
                         }
                         await db.SaveChangesAsync(cancellationToken);
-                        await transaction.CommitAsync(cancellationToken);
+                        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
                         results.Add(new(interchange.ControlNumber, "Accepted", acknowledgment, interchange.Claims, outcomes));
                         break;
                     }
-                    catch (DbUpdateException exception) when (attempt == 0 && ClaimStore.IsUniqueViolation(exception))
+                    catch (DbUpdateException exception) when (ownsTransaction && attempt == 0 && ClaimStore.IsUniqueViolation(exception))
                     {
-                        await transaction.RollbackAsync(cancellationToken);
+                        await transaction!.RollbackAsync(cancellationToken);
                     }
                 }
             }

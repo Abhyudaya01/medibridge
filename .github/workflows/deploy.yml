@@ -24,6 +24,8 @@ jobs:
         run: dotnet restore
       - name: Build
         run: dotnet build --no-restore -c Release
+      - name: Start isolated SQL Server for integration tests
+        run: bash infra/ci-sql.sh
       - name: Test
         run: dotnet test --no-build -c Release
       - name: Publish
