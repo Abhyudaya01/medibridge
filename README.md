@@ -33,3 +33,21 @@ Future persistence will use EF Core with SQLite by default and SQL Server/Azure 
 Every benchmark must generate machine-readable `benchmarks/results/*.json` and a summary row in `benchmarks/RESULTS.md` from an actual harness run. No benchmark has been run in this scaffold.
 
 Source: [Abhyudaya01/medibridge](https://github.com/Abhyudaya01/medibridge).
+
+## Azure deployment
+
+Live demo: [MediBridge](https://medibridge-abhi.azurewebsites.net). Check [the live health endpoint](https://medibridge-abhi.azurewebsites.net/health) for `{"status":"ok","version":"0.1.0"}`.
+
+The Linux App Service uses `DOTNETCORE|10.0` on the F1 (Free) plan `plan-medibridge` in `westus`. The resource group `rg-medibridge` remains in `eastus`. The subscription policy does not permit App Service in `eastus`, `eastus2`, `centralus`, or `southcentralus`, so `westus` is the approved fallback. Public resource names, regions, and URL are saved in `infra/azure.env`; it contains no secrets. Free-tier apps may need time to warm up after inactivity.
+
+To deploy an updated build from the repository root (requires Azure CLI login):
+
+```sh
+dotnet build
+dotnet test
+dotnet publish src/MediBridge.Api -c Release -o publish
+(cd publish && zip -r ../app.zip .)
+az webapp deploy -g rg-medibridge --name medibridge-abhi --src-path app.zip --type zip
+```
+
+Zip entries must be the contents of `publish/`, with `MediBridge.Api.dll` at the archive root. SCM basic publishing credentials are enabled for this app to support the requested deployment flow. Build output and the deployment zip are ignored by Git.
