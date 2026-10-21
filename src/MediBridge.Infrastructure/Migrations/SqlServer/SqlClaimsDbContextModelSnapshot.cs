@@ -288,6 +288,76 @@ namespace MediBridge.Infrastructure.Migrations.SqlServer
                     b.ToTable("Outbox");
                 });
 
+            modelBuilder.Entity("MediBridge.Infrastructure.PriorAuth.PriorAuthEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Detail")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("RequestId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("Stage")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTimeOffset>("Timestamp")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RequestId", "Id");
+
+                    b.ToTable("PriorAuthEvents", (string)null);
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("MediBridge.Infrastructure.PriorAuth.PriorAuthRecord", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("CanonicalJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("SourceFormat")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("ValidationJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("PriorAuthRequests");
+                });
+
             modelBuilder.Entity("MediBridge.Core.ClaimEvent", b =>
                 {
                     b.HasOne("MediBridge.Core.Claim", null)
@@ -320,6 +390,15 @@ namespace MediBridge.Infrastructure.Migrations.SqlServer
                     b.HasOne("MediBridge.Core.Claim", null)
                         .WithMany()
                         .HasForeignKey("ClaimId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MediBridge.Infrastructure.PriorAuth.PriorAuthEvent", b =>
+                {
+                    b.HasOne("MediBridge.Infrastructure.PriorAuth.PriorAuthRecord", null)
+                        .WithMany()
+                        .HasForeignKey("RequestId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

@@ -36,7 +36,7 @@ public class SqlIntegrationTests
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ClaimsDbContext>();
-            Assert.True(db.Database.IsSqlServer()); Assert.Equal(2, (await db.Database.GetAppliedMigrationsAsync()).Count());
+            Assert.True(db.Database.IsSqlServer()); Assert.Equal(3, (await db.Database.GetAppliedMigrationsAsync()).Count());
         }
         var dispatcher = factory.Services.GetRequiredService<OutboxDispatcher>();
         for (var i = 0; i < 8; i++) await Task.WhenAll(dispatcher.DispatchOneAsync(), dispatcher.DispatchOneAsync());
@@ -44,5 +44,14 @@ public class SqlIntegrationTests
         Assert.Equal(ClaimStatus.Succeeded, (await saved.Claims.SingleAsync(c => c.Id == id)).Status);
         Assert.Equal(1, await saved.Receipts.CountAsync(r => saved.Outbox.Any(m => m.Id == r.Id && m.ClaimId == id)));
         await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => saved.Database.ExecuteSqlRawAsync("UPDATE ClaimEvents SET Detail='Forbidden'"));
+        client.DefaultRequestHeaders.Remove("Idempotency-Key"); client.DefaultRequestHeaders.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
+        var pair = MediBridge.Parity.PairedRequests.Generate(1)[0]; var paId = "PA-SQL-" + Guid.NewGuid().ToString("N");
+        var body = pair.Fhir.Replace(pair.Expected.Id, paId);
+        using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/fhir+json");
+        Assert.Equal(HttpStatusCode.Created, (await client.PostAsync("/api/pa/fhir", content)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/pa/" + paId)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/pa/" + paId.ToLowerInvariant())).StatusCode);
+        Assert.Equal(3, await saved.PriorAuthEvents.CountAsync(e => e.RequestId == paId));
+        await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => saved.Database.ExecuteSqlRawAsync("UPDATE PriorAuthEvents SET Detail='Forbidden'"));
     }
 }

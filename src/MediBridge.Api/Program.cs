@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using MediBridge.Core;
 using MediBridge.Infrastructure;
+using MediBridge.Infrastructure.PriorAuth;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -9,12 +10,13 @@ builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.C
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options => options.SwaggerDoc("v1", new Microsoft.OpenApi.OpenApiInfo
 {
-    Title = "MediBridge synthetic claims API", Version = "0.5.0",
+    Title = "MediBridge synthetic claims API", Version = "0.6.0",
     Description = "Synthetic data only. Not affiliated with any payer. No real member or provider data."
 }));
 builder.Services.AddSingleton<ClaimWriteLock>();
 builder.Services.AddScoped<ClaimStore>();
 builder.Services.AddScoped<X12Intake>();
+builder.Services.AddScoped<PriorAuthStore>();
 builder.Services.AddSingleton(TimeProvider.System);
 var faultOptions = builder.Configuration.GetSection("FaultInjection").Get<FaultOptions>() ?? new();
 if (faultOptions.TransientFailureRate is < 0 or > 1 || double.IsNaN(faultOptions.TransientFailureRate)
@@ -53,7 +55,7 @@ app.UseStaticFiles();
 app.UseSwagger();
 app.UseSwaggerUI();
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok", version = "0.5.0" }));
+app.MapGet("/health", () => Results.Ok(new { status = "ok", version = "0.6.0" }));
 app.MapGet("/api/claims", async (ClaimsDbContext db, CancellationToken cancellationToken) =>
     Results.Ok(await db.Claims.AsNoTracking().OrderBy(c => c.Id).ToListAsync(cancellationToken)));
 
@@ -132,6 +134,8 @@ app.MapGet("/api/queues/correction", async (ClaimsDbContext db, CancellationToke
 app.MapGet("/api/outbox", async (ClaimsDbContext db, CancellationToken ct) =>
     Results.Ok(await db.Outbox.AsNoTracking().OrderBy(m => m.ClaimId)
         .Select(m => new { m.Id, m.ClaimId, m.State, m.Deliveries, m.NextAttemptAt, m.LeaseUntil }).ToListAsync(ct)));
+
+app.MapPriorAuthEndpoints();
 
 app.Run();
 

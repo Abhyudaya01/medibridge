@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\MediBridge.Api\MediBridge.Api.csproj" />
     <ProjectReference Include="..\..\benchmarks\chaos\MediBridge.Chaos.csproj" />
+    <ProjectReference Include="..\..\benchmarks\parity\MediBridge.Parity.csproj" />
   </ItemGroup>
 
   <ItemGroup>

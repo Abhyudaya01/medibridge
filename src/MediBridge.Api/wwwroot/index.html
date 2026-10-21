@@ -11,7 +11,7 @@
 <body>
   <main>
     <header>
-      <div class="brand"><span class="mark" aria-hidden="true">M</span><div><p class="eyebrow">Exception &amp; recovery engine</p><h1>MediBridge</h1></div><span class="version">v0.5.0</span></div>
+      <div class="brand"><span class="mark" aria-hidden="true">M</span><div><p class="eyebrow">Exception &amp; recovery engine</p><h1>MediBridge</h1></div><span class="version">v0.6.0</span></div>
       <p class="description">A healthcare claims and prior authorization exception and recovery engine on synthetic data. Explore deterministic claim validation, simulated downstream recovery, duplicate suppression, and rule-version review through an auditable transaction timeline.</p>
       <p class="notice"><strong>Synthetic data. Not affiliated with any payer.</strong> Use fabricated identifiers only. No external healthcare services are called.</p>
       <nav aria-label="Project links"><a href="/health">API health</a><a href="/swagger">Swagger API</a><a href="https://github.com/Abhyudaya01/medibridge">GitHub repository</a></nav>
@@ -73,14 +73,29 @@
       </form>
       <div id="submission-result" role="status" aria-live="polite"></div>
     </section>
+    <section class="panel" aria-labelledby="pa-title">
+      <p class="eyebrow">Prior authorization · synthetic intake</p>
+      <h2 id="pa-title">Submit a prior authorization request</h2>
+      <p class="muted">Submit the documented X12 278 or FHIR R4 Claim subset and compare the canonical view. Accepted means intake validation passed; it is not authorization approval.</p>
+      <form id="pa-form">
+        <label>Format<select id="pa-format"><option value="x12-278">X12 278 · text/plain</option><option value="fhir">FHIR R4 Claim · application/fhir+json</option></select></label>
+        <button id="pa-sample" type="button">Load new synthetic sample</button>
+        <label>Request payload<textarea id="pa-text" rows="12" spellcheck="false" required aria-describedby="pa-help"></textarea></label>
+        <p id="pa-help" class="muted">Maximum 64 KiB. Fabricated SYN- members and service codes only. Samples use a checksum-only NPI. Priority and submitted time map to the same canonical fields in either format.</p>
+        <button id="pa-submit" class="primary" type="submit">Submit &amp; show canonical request</button>
+      </form>
+      <p id="pa-status" role="status" aria-live="polite"></p>
+      <div id="pa-result"></div>
+      <form id="pa-lookup-form"><label>Recorded request ID<input id="pa-lookup-id" maxlength="64" required></label><button type="submit">Load request &amp; timeline</button></form>
+    </section>
     <section class="panel" aria-labelledby="benchmarks-title">
       <h2 id="benchmarks-title">Reliability measurements</h2>
       <p>Explore measured crash recovery and HTTP submission load using fabricated claims. Local chaos checks kill and restart the processing host; a virtual clock advances retry deadlines. Load latency measures claim acceptance, with processing continuing asynchronously.</p>
       <p><a href="https://github.com/Abhyudaya01/medibridge/blob/main/benchmarks/RESULTS.md">Measured results and test environment</a> · <a href="https://github.com/Abhyudaya01/medibridge/blob/main/benchmarks/README.md">Run the harnesses</a></p>
       <p class="muted">Benchmark runs are separate from this demo. Live load requires approval for a temporary B1 window and verified restoration to F1.</p>
     </section>
-    <section aria-labelledby="roadmap-title"><h2 id="roadmap-title">Roadmap</h2><ol class="roadmap"><li><strong>Phase 1</strong><h3>Recovery workflows</h3><p>Extend the Phase 0 validation and audit foundation with richer exception handling.</p></li><li><strong>Phase 2</strong><h3>Prior authorization</h3><p>Expand synthetic authorization scenarios, rule versions, and review workflows.</p></li><li><strong>Phase 3</strong><h3>Reliability &amp; measurement</h3><p>Expand workload coverage using the measured chaos and load foundation.</p></li></ol></section>
-    <footer>Portfolio simulation · Synthetic records only · Chunk 1c: measured reliability</footer>
+    <section aria-labelledby="roadmap-title"><h2 id="roadmap-title">Roadmap</h2><ol class="roadmap"><li><strong>Phase 1</strong><h3>Recovery workflows</h3><p>Extend the Phase 0 validation and audit foundation with richer exception handling.</p></li><li><strong>Phase 2</strong><h3>Prior authorization</h3><p>Intake X12 278 and FHIR R4 requests into one canonical view, then expand review workflows.</p></li><li><strong>Phase 3</strong><h3>Reliability &amp; measurement</h3><p>Expand workload coverage using the measured chaos and load foundation.</p></li></ol></section>
+    <footer>Portfolio simulation · Synthetic records only · Chunk 2a: prior authorization intake</footer>
   </main>
 </body>
 </html>
