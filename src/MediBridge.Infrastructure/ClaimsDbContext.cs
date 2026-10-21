@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MediBridge.Infrastructure.PriorAuth;
 using MediBridge.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
@@ -7,6 +8,8 @@ namespace MediBridge.Infrastructure;
 
 public class ClaimsDbContext(DbContextOptions options) : DbContext(options)
 {
+    public DbSet<PriorAuthRecord> PriorAuthRequests => Set<PriorAuthRecord>();
+    public DbSet<PriorAuthEvent> PriorAuthEvents => Set<PriorAuthEvent>();
     public DbSet<Claim> Claims => Set<Claim>();
     public DbSet<ClaimEvent> ClaimEvents => Set<ClaimEvent>();
     public DbSet<OutboxMessage> Outbox => Set<OutboxMessage>();
@@ -17,6 +20,13 @@ public class ClaimsDbContext(DbContextOptions options) : DbContext(options)
 
     protected override void OnModelCreating(ModelBuilder model)
     {
+        var pa = model.Entity<PriorAuthRecord>(); pa.HasKey(r => r.Id); pa.Property(r => r.Id).HasMaxLength(64).UseCollation(Database.IsSqlServer() ? "Latin1_General_100_BIN2" : "BINARY");
+        pa.Property(r => r.Outcome).HasMaxLength(32); pa.Property(r => r.SourceFormat).HasMaxLength(32);
+        var paEvent = model.Entity<PriorAuthEvent>(); paEvent.HasKey(e => e.Id); paEvent.Property(e => e.RequestId).HasMaxLength(64).UseCollation(Database.IsSqlServer() ? "Latin1_General_100_BIN2" : "BINARY");
+        paEvent.Property(e => e.Stage).HasMaxLength(64); paEvent.Property(e => e.Outcome).HasMaxLength(64);
+        paEvent.HasIndex(e => new { e.RequestId, e.Id });
+        paEvent.HasOne<PriorAuthRecord>().WithMany().HasForeignKey(e => e.RequestId).OnDelete(DeleteBehavior.Restrict);
+        if (Database.IsSqlServer()) paEvent.ToTable("PriorAuthEvents", table => table.UseSqlOutputClause(false));
         var claim = model.Entity<Claim>();
         claim.Ignore(c => c.RetryCount);
         claim.HasKey(c => c.Id);
@@ -80,6 +90,11 @@ public class ClaimsDbContext(DbContextOptions options) : DbContext(options)
     private void EnforceAudit()
     {
         ChangeTracker.DetectChanges();
+        if (ChangeTracker.Entries<PriorAuthEvent>().Any(e => e.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("PriorAuthEvents is append-only.");
+        var auditedPaIds = ChangeTracker.Entries<PriorAuthEvent>().Where(e => e.State == EntityState.Added).Select(e => e.Entity.RequestId).ToHashSet(StringComparer.Ordinal);
+        if (ChangeTracker.Entries<PriorAuthRecord>().Any(e => e.State == EntityState.Deleted || (e.State is EntityState.Added or EntityState.Modified) && !auditedPaIds.Contains(e.Entity.Id)))
+            throw new InvalidOperationException("Prior authorization records require appended timeline events and cannot be deleted.");
         if (ChangeTracker.Entries<AuditEntry>().Any(e => e.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Audit is append-only.");
         foreach (var entry in ChangeTracker.Entries().Where(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted).ToArray())
@@ -87,12 +102,12 @@ public class ClaimsDbContext(DbContextOptions options) : DbContext(options)
             if (entry.Entity is OutboxMessage message && entry.State == EntityState.Modified) message.Version = (long)entry.Property("Version").OriginalValue! + 1;
             if (entry.Entity is HandlerReceipt or IdempotencyRecord && entry.State == EntityState.Modified)
                 throw new InvalidOperationException("Committed responses and handler receipts are immutable.");
-            if (entry.Entity is not (OutboxMessage or HandlerReceipt or CorrectionItem or IdempotencyRecord)) continue;
+            if (entry.Entity is not (OutboxMessage or HandlerReceipt or CorrectionItem or IdempotencyRecord or PriorAuthRecord)) continue;
             if (entry.State == EntityState.Deleted) throw new InvalidOperationException("Reliability records cannot be deleted.");
             Audit.Add(new AuditEntry
             {
                 Timestamp = DateTime.UtcNow, EntityType = entry.Entity.GetType().Name,
-                EntityId = entry.Entity switch { OutboxMessage m => m.Id, HandlerReceipt r => r.Id, CorrectionItem c => c.ClaimId, IdempotencyRecord r => r.Id, _ => "" },
+                EntityId = entry.Entity switch { OutboxMessage m => m.Id, HandlerReceipt r => r.Id, CorrectionItem c => c.ClaimId, IdempotencyRecord r => r.Id, PriorAuthRecord p => p.Id, _ => "" },
                 Action = entry.State.ToString(), Detail = entry.Entity is OutboxMessage m2 ? $"{m2.State}; deliveries={m2.Deliveries}; version={m2.Version}" : "Durable record saved."
             });
         }

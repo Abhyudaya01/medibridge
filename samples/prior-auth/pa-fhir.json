@@ -1,0 +1,106 @@
+{
+  "resourceType": "Claim",
+  "id": "PA-SYN-SAMPLE",
+  "identifier": [
+    {
+      "system": "urn:medibridge:prior-auth",
+      "value": "PA-SYN-SAMPLE"
+    }
+  ],
+  "status": "active",
+  "type": {
+    "coding": [
+      {
+        "system": "http://terminology.hl7.org/CodeSystem/claim-type",
+        "code": "professional"
+      }
+    ]
+  },
+  "use": "preauthorization",
+  "patient": {
+    "reference": "#member"
+  },
+  "provider": {
+    "reference": "#requestor"
+  },
+  "created": "2026-01-20T12:00:00\u002B00:00",
+  "priority": {
+    "coding": [
+      {
+        "system": "http://terminology.hl7.org/CodeSystem/processpriority",
+        "code": "normal"
+      }
+    ]
+  },
+  "insurance": [
+    {
+      "sequence": 1,
+      "focal": true,
+      "coverage": {
+        "identifier": {
+          "system": "urn:medibridge:synthetic-coverage",
+          "value": "SYN-COVERAGE"
+        }
+      }
+    }
+  ],
+  "item": [
+    {
+      "sequence": 1,
+      "productOrService": {
+        "coding": [
+          {
+            "system": "urn:medibridge:synthetic-service",
+            "code": "SYN-SERVICE-A"
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 2,
+      "productOrService": {
+        "coding": [
+          {
+            "system": "urn:medibridge:synthetic-service",
+            "code": "SYN-SERVICE-B"
+          }
+        ]
+      }
+    }
+  ],
+  "extension": [
+    {
+      "url": "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/extension-levelOfServiceCode",
+      "valueCodeableConcept": {
+        "coding": [
+          {
+            "system": "https://codesystem.x12.org/005010/1338",
+            "code": "U"
+          }
+        ]
+      }
+    }
+  ],
+  "contained": [
+    {
+      "resourceType": "Patient",
+      "id": "member",
+      "identifier": [
+        {
+          "system": "urn:medibridge:synthetic-member",
+          "value": "SYN-PA-SAMPLE"
+        }
+      ]
+    },
+    {
+      "resourceType": "Organization",
+      "id": "requestor",
+      "identifier": [
+        {
+          "system": "http://hl7.org/fhir/sid/us-npi",
+          "value": "0000000006"
+        }
+      ]
+    }
+  ]
+}

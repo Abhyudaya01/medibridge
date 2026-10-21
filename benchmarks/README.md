@@ -53,6 +53,14 @@ The wrapper checks the plan is F1 in the recorded region, checks the required su
 
 The committed [live load sample](results/load.json) measured app version **0.4.0** on **B1** before the 0.5.0 benchmark-tooling release. Its [cloud operation record](results/load-azure-operation.json) confirms restoration to **F1**. The exact percentiles, throughput, failures, target, and timestamps are in the artifact and ledger; these observations apply to that recorded workload and environment.
 
+## X12 278 / FHIR R4 parity
+
+```sh
+dotnet run --project benchmarks/parity -c Release
+```
+
+The parity console generates 200 pairs (160 accepted and 40 shared semantic-invalid cases) and checks both complete canonical models and intake outcomes against independent expected values as well as each other. It writes real measurements to `results/parity.json` and appends a ledger row. Failure retains the artifact and exits nonzero. See [the exact mapping, corpus coverage, and limitations](../docs/prior-auth-intake.md). No external service or live load is used. For an isolated exploratory run, use `--output /tmp/pa-experiment/results/parity.json`; its ledger is written one directory above the output's results directory. `--samples <directory>` regenerates paired synthetic fixtures without running a benchmark.
+
 ## Automated checks
 
 `dotnet test` covers aggregate math, null denominators, deterministic failure draws, real child-process crashes, full drain, replay suppression, and JSON/ledger creation. `python3 -m unittest discover -s benchmarks/load -p 'test_*.py'` checks extraction, invalid metrics, append-only ledger rows, subscription guards, and F1 restoration after a simulated load failure. CI runs these short checks, not the 1,000-iteration benchmark or live load.

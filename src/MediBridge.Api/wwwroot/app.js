@@ -152,3 +152,56 @@ byId('x12-form').addEventListener('submit', async event => {
   } catch (error) { status.textContent = `X12 intake failed: ${error.message}`; }
   finally { button.disabled = false; }
 });
+
+
+async function loadPaSample() {
+  const format = byId('pa-format').value;
+  const response = await fetch(`/samples/pa-${format}.${format === 'fhir' ? 'json' : 'txt'}`);
+  if (!response.ok) throw new Error('The synthetic PA sample could not be loaded.');
+  const id = `PA-DEMO-${crypto.randomUUID().slice(0, 12)}`;
+  byId('pa-text').value = (await response.text()).replaceAll('PA-SYN-SAMPLE', id);
+  byId('pa-status').textContent = 'Synthetic sample ready. Select Submit to record it.';
+}
+function showPa(data, status) {
+  const result = byId('pa-result'); result.replaceChildren();
+  byId('pa-status').textContent = `${data.outcome || 'Request'} · HTTP ${status}`;
+  if (data.request) {
+    byId('pa-lookup-id').value = data.request.id;
+    result.append(element('h3', 'Canonical request'), element('pre', JSON.stringify(data.request, null, 2)));
+  }
+  if (data.errors?.length) {
+    const list = element('ul');
+    data.errors.forEach(error => list.append(element('li', `${error.ruleId} · ${error.path || error.field}${error.segmentId ? ` · ${error.segmentId} segment ${error.segmentPosition}, element ${error.elementPosition}` : ''}: ${error.reason}`)));
+    result.append(list);
+  }
+  if (data.detail) result.append(element('p', data.detail));
+  if (data.timeline) {
+    const list = element('ol', undefined, 'timeline');
+    data.timeline.forEach(event => {
+      const item = element('li');
+      item.append(element('strong', `${event.stage} · ${event.outcome}`), element('time', event.timestamp), element('p', event.detail)); list.append(item);
+    });
+    result.append(element('h3', 'Intake timeline'), list);
+  }
+}
+byId('pa-sample').addEventListener('click', () => loadPaSample().catch(error => byId('pa-status').textContent = error.message));
+byId('pa-format').addEventListener('change', () => loadPaSample().catch(error => byId('pa-status').textContent = error.message));
+byId('pa-form').addEventListener('submit', async event => {
+  event.preventDefault(); const button = byId('pa-submit'); button.disabled = true;
+  const format = byId('pa-format').value; const payload = byId('pa-text').value; const path = `/api/pa/${format}`;
+  try {
+    if (new TextEncoder().encode(payload).length > 65536) throw new Error('Input exceeds 64 KiB.');
+    const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': format === 'fhir' ? 'application/fhir+json' : 'text/plain; charset=utf-8', 'Idempotency-Key': requestKey(path, payload) }, body: payload });
+    const body = await response.text(); showPa(body ? JSON.parse(body) : { detail: 'Check content type, encoding, and size.' }, response.status);
+  } catch (error) { byId('pa-status').textContent = `PA intake failed: ${error.message}`; }
+  finally { button.disabled = false; }
+});
+byId('pa-lookup-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const response = await fetch(`/api/pa/${encodeURIComponent(byId('pa-lookup-id').value.trim())}`);
+    if (!response.ok) throw new Error(`Request lookup returned HTTP ${response.status}.`);
+    showPa(await response.json(), response.status);
+  } catch (error) { byId('pa-status').textContent = error.message; }
+});
+loadPaSample().catch(error => byId('pa-status').textContent = error.message);

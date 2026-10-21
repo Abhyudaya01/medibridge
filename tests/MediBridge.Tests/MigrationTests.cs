@@ -22,7 +22,7 @@ public class MigrationTests
         await db.InitializeAsync(); await db.InitializeAsync();
         Assert.Equal("CLM-LEGACY", (await db.Claims.SingleAsync()).Id);
         Assert.Equal("Original synthetic history", (await db.ClaimEvents.SingleAsync()).Detail);
-        Assert.Equal(2, (await db.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(3, (await db.Database.GetAppliedMigrationsAsync()).Count());
         Assert.True(File.Exists(path + ".legacy-backup.db"));
     }
     [Fact]

@@ -1,8 +1,18 @@
-# MediBridge · v0.5.0
+# MediBridge · v0.6.0
 
 Healthcare Claims & Prior Authorization Exception and Recovery Engine. Portfolio simulation on **synthetic data only**. **Not affiliated with any payer.** Never use real PHI, real member IDs, or real payer names or branding. All downstream processing is simulated locally; no healthcare services are called.
 
 Live demo: [MediBridge](https://medibridge-abhi.azurewebsites.net) · [Health](https://medibridge-abhi.azurewebsites.net/health) · [Swagger](https://medibridge-abhi.azurewebsites.net/swagger) · [GitHub](https://github.com/Abhyudaya01/medibridge)
+
+## Chunk 2a: prior authorization intake
+
+Submit the documented X12 278 request subset or a FHIR R4 `Claim` with `use=preauthorization` through the demo's prior-authorization panel. Both map to a common member/provider/service/priority/submitted-time model and an audited intake timeline. **Accepted means intake validation passed; it is not an authorization decision.** FHIR parsing uses `Hl7.Fhir.R4` in Infrastructure; Core stays independent of frameworks.
+
+See [the mapping, supported grammar, PAS-shaped FHIR contract, and API behavior](docs/prior-auth-intake.md), [paired synthetic samples](samples/prior-auth/), and [measured parity results](benchmarks/RESULTS.md). Both POST routes require `Idempotency-Key`. Source submitted timestamps normalize to UTC; receipt timestamps remain in the timeline. The local parity harness compares 200 paired cases against independent expected models and outcomes; invalid inputs are tested as well as accepted ones.
+
+```sh
+dotnet run --project benchmarks/parity -c Release
+```
 
 ## Chunk 1c: measured chaos and HTTP load
 
@@ -72,6 +82,12 @@ flowchart LR
     Provider --> SQL[SQL Server when ConnectionStrings:Sql is set]
     SQLite --- EF
     SQL --- EF
+    PA278[X12 278] --> PAMap[Core: PA subset parser + shared validation]
+    FHIR[FHIR R4 Claim] --> Firely[Infrastructure: Firely R4 adapter]
+    Firely --> PAMap
+    PAMap --> PAStore[PA records + append-only timeline]
+    API --> PAStore
+    PAStore --> EF
     Tests[xUnit + WebApplicationFactory] -. validates .-> API
     Tests -. validates .-> Core
 ```
@@ -95,7 +111,7 @@ dotnet test
 dotnet run --project src/MediBridge.Api --no-launch-profile --urls http://localhost:5080
 ```
 
-Open [the demo](http://localhost:5080/), [Swagger](http://localhost:5080/swagger), or [health](http://localhost:5080/health). Health returns `{"status":"ok","version":"0.5.0"}` and is a process liveness endpoint. Startup initializes storage and seeds the four scenarios before serving requests.
+Open [the demo](http://localhost:5080/), [Swagger](http://localhost:5080/swagger), or [health](http://localhost:5080/health). Health returns `{"status":"ok","version":"0.6.0"}` and is a process liveness endpoint. Startup initializes storage and seeds the four scenarios before serving requests.
 
 SQLite defaults to `src/MediBridge.Api/Data/medibridge.db` locally and `/home/data/medibridge.db` on Linux App Service. Override its path with `Database__Path` (configuration key `Database:Path`). Parent directories are created automatically. The database is outside the deployed application directory on Azure and persists across zip deployments when App Service storage is enabled.
 
@@ -107,11 +123,14 @@ Startup now applies provider-specific EF migrations. Known legacy EnsureCreated 
 
 | Method | Path | Behavior |
 |---|---|---|
-| GET | `/health` | 200 with status and version 0.5.0 |
+| GET | `/health` | 200 with status and version 0.6.0 |
 | GET | `/api/claims` | Ordered array of claims and current classification/validation failures |
 | GET | `/api/claims/{id}` | Claim, ordered full timeline, and validation failures; 404 if absent |
 | POST | `/api/claims` | Validate and atomically persist a claim with its timeline |
 | POST | `/api/x12/837` | text/plain subset intake with per-interchange acknowledgment, parsed claims, and import outcomes |
+| POST | `/api/pa/x12-278` | Synthetic 278 subset → canonical PA intake + timeline |
+| POST | `/api/pa/fhir` | PAS-shaped FHIR R4 Claim → same canonical PA intake + timeline |
+| GET | `/api/pa/{id}` | Canonical request, validation outcome and append-only timeline |
 | GET | `/api/queues/correction` | Non-retryable business-rule correction items |
 | GET | `/api/outbox` | Durable delivery states, counts, and scheduling |
 | GET | `/swagger` | Interactive API documentation; schema at `/swagger/v1/swagger.json` |
@@ -157,5 +176,6 @@ Watch a deployment with `gh run list --workflow deploy.yml`, then `gh run watch 
 - **Chunk 1b (implemented):** durable idempotency, outbox/receipts, bounded retries, correction queue, fault injection, dual-provider migrations, and free-offer Azure SQL.
 - **Chunk 1c (implemented):** measured chaos/recovery and HTTP load harnesses; results include test environment and limitations.
 - **Phase 1 (next):** richer exception and recovery workflows on the validation/audit/intake foundation.
-- **Phase 2:** expanded synthetic prior-authorization scenarios, versioned rules, and review workflows.
+- **Chunk 2a (implemented):** X12 278 / FHIR R4 prior-authorization intake, canonical mapping, audit timelines, paired samples, and measured parity.
+- **Phase 2 (next):** expanded synthetic authorization review, versioned rules, and decision workflows.
 - **Phase 3:** expand scale, workload generators, and measured benchmark coverage. Every harness run must produce `benchmarks/results/*.json` and a row in `benchmarks/RESULTS.md`; never hardcode or fabricate results.

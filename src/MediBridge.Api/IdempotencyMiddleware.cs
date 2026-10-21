@@ -10,7 +10,7 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
     {
         if (!HttpMethods.IsPost(context.Request.Method)) { await next(context); return; }
         var scope = (context.Request.Path.Value ?? "").TrimEnd('/').ToLowerInvariant();
-        if (scope is not ("/api/claims" or "/api/x12/837")) { await next(context); return; }
+        if (scope is not ("/api/claims" or "/api/x12/837" or "/api/pa/x12-278" or "/api/pa/fhir")) { await next(context); return; }
         var values = context.Request.Headers["Idempotency-Key"];
         if (values.Count != 1 || string.IsNullOrWhiteSpace(values[0]) || values[0]!.Length > 128 || values[0]!.Any(c => c < '!' || c > '~'))
         { context.Response.StatusCode = 400; await context.Response.WriteAsJsonAsync(new { detail = "Provide one Idempotency-Key header containing 1–128 printable ASCII characters." }); return; }
