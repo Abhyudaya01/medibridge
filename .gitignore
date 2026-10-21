@@ -489,3 +489,7 @@ $RECYCLE.BIN/
 *.db-wal
 *.PublishSettings
 *.publishsettings
+
+# Python benchmark runner caches
+__pycache__/
+*.pyc

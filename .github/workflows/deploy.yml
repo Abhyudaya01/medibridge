@@ -28,6 +28,8 @@ jobs:
         run: bash infra/ci-sql.sh
       - name: Test
         run: dotnet test --no-build -c Release
+      - name: Check load summary reporting
+        run: python3 -m unittest discover -s benchmarks/load -p 'test_*.py'
       - name: Publish
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: dotnet publish src/MediBridge.Api --no-build -c Release -o publish

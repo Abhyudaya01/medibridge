@@ -1,0 +1,25 @@
+{
+  "startedAtUtc": "2026-10-21T22:34:04.652974+00:00",
+  "subscription": "36637271-a6f8-4110-9be1-55f112612c8c",
+  "plan": "plan-medibridge",
+  "region": "westus",
+  "initial": {
+    "capacity": 1,
+    "location": "West US",
+    "sku": "F1"
+  },
+  "scaleUp": {
+    "capacity": 1,
+    "location": "West US",
+    "sku": "B1"
+  },
+  "final": {
+    "capacity": 1,
+    "location": "West US",
+    "sku": "F1"
+  },
+  "error": null,
+  "rollbackError": null,
+  "loadExitCode": 0,
+  "completedAtUtc": "2026-10-21T22:40:06.813864+00:00"
+}

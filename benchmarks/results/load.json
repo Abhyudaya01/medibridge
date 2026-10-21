@@ -1,0 +1,285 @@
+{
+  "schemaVersion": "1",
+  "runId": "20261021T223723-e18041",
+  "startedAtUtc": "2026-10-21T22:37:23.965821+00:00",
+  "completedAtUtc": "2026-10-21T22:39:55.388957+00:00",
+  "sourceCommit": "7e632314072231f12079cc1e1dad7ae08f7c126a",
+  "baseUrl": "https://medibridge-abhi.azurewebsites.net",
+  "appVersion": "0.4.0",
+  "sku": "B1",
+  "k6Version": "k6 v2.3.0 (commit/devel, go1.27.1, darwin/arm64)",
+  "profile": "150s-ramp-0-5-10-10-0",
+  "maxVus": 10,
+  "thinkTimeSeconds": 1,
+  "wallSeconds": 151.23656804207712,
+  "measurement": "POST /api/claims duration (all responses, milliseconds); submission throughput, not completed-claim throughput",
+  "status": "completed",
+  "exitCode": 0,
+  "error": null,
+  "metrics": {
+    "requests": 645,
+    "requestsPerSecond": 4.267021809899574,
+    "p50Ms": 486.709,
+    "p95Ms": 1402.8917999999996,
+    "p99Ms": 2198.3806799999998,
+    "failureRate": 0,
+    "failedRequests": 0
+  },
+  "rawSummary": {
+    "root_group": {
+      "name": "",
+      "path": "",
+      "id": "d41d8cd98f00b204e9800998ecf8427e",
+      "groups": [],
+      "checks": [
+        {
+          "name": "claim accepted (202)",
+          "path": "::claim accepted (202)",
+          "id": "eef7143177580a24ad2d941a003e1f22",
+          "passes": 645,
+          "fails": 0
+        }
+      ]
+    },
+    "options": {
+      "noColor": true,
+      "summaryTrendStats": [
+        "count",
+        "avg",
+        "min",
+        "max",
+        "p(50)",
+        "p(95)",
+        "p(99)"
+      ],
+      "summaryTimeUnit": ""
+    },
+    "state": {
+      "isStdOutTTY": false,
+      "isStdErrTTY": false,
+      "testRunDurationMs": 151159.293
+    },
+    "metrics": {
+      "http_req_duration{expected_response:true}": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "avg": 604.0845519379851,
+          "min": 148.413,
+          "max": 2507.407,
+          "p(50)": 486.709,
+          "p(95)": 1402.8917999999996,
+          "p(99)": 2198.3806799999998,
+          "count": 645
+        }
+      },
+      "http_req_tls_handshaking": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "min": 0,
+          "max": 1065.006,
+          "p(50)": 0,
+          "p(95)": 0,
+          "p(99)": 158.95708,
+          "count": 645,
+          "avg": 4.332291472868218
+        }
+      },
+      "claim_submission_duration": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "max": 2507.407,
+          "p(50)": 486.709,
+          "p(95)": 1402.8917999999996,
+          "p(99)": 2198.3806799999998,
+          "count": 645,
+          "avg": 604.0845519379851,
+          "min": 148.413
+        }
+      },
+      "http_req_blocked": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "count": 645,
+          "avg": 5.695958139534912,
+          "min": 0.003,
+          "max": 1193.665,
+          "p(50)": 0.01,
+          "p(95)": 0.027,
+          "p(99)": 251.1705199999998
+        }
+      },
+      "http_req_connecting": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "p(50)": 0,
+          "p(95)": 0,
+          "p(99)": 73.84328,
+          "count": 645,
+          "avg": 1.3059302325581397,
+          "min": 0,
+          "max": 128.576
+        }
+      },
+      "claim_submission_failed": {
+        "type": "rate",
+        "contains": "default",
+        "values": {
+          "passes": 0,
+          "fails": 645,
+          "rate": 0
+        },
+        "thresholds": {
+          "rate<0.01": {
+            "ok": true
+          }
+        }
+      },
+      "http_reqs": {
+        "type": "counter",
+        "contains": "default",
+        "values": {
+          "count": 645,
+          "rate": 4.267021809899574
+        }
+      },
+      "vus_max": {
+        "values": {
+          "value": 10,
+          "min": 10,
+          "max": 10
+        },
+        "type": "gauge",
+        "contains": "default"
+      },
+      "http_req_duration": {
+        "contains": "time",
+        "values": {
+          "p(95)": 1402.8917999999996,
+          "p(99)": 2198.3806799999998,
+          "count": 645,
+          "avg": 604.0845519379851,
+          "min": 148.413,
+          "max": 2507.407,
+          "p(50)": 486.709
+        },
+        "type": "trend"
+      },
+      "iterations": {
+        "type": "counter",
+        "contains": "default",
+        "values": {
+          "count": 645,
+          "rate": 4.267021809899574
+        }
+      },
+      "http_req_failed": {
+        "type": "rate",
+        "contains": "default",
+        "values": {
+          "rate": 0,
+          "passes": 0,
+          "fails": 645
+        }
+      },
+      "checks": {
+        "type": "rate",
+        "contains": "default",
+        "values": {
+          "rate": 1,
+          "passes": 645,
+          "fails": 0
+        }
+      },
+      "data_sent": {
+        "contains": "data",
+        "values": {
+          "count": 302443,
+          "rate": 2000.8230655061348
+        },
+        "type": "counter"
+      },
+      "vus": {
+        "type": "gauge",
+        "contains": "default",
+        "values": {
+          "value": 1,
+          "min": 0,
+          "max": 10
+        }
+      },
+      "http_req_sending": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "p(95)": 0.138,
+          "p(99)": 0.44655999999999985,
+          "count": 645,
+          "avg": 0.06972713178294561,
+          "min": 0.014,
+          "max": 1.51,
+          "p(50)": 0.048
+        }
+      },
+      "data_received": {
+        "type": "counter",
+        "contains": "data",
+        "values": {
+          "rate": 9047.462268826568,
+          "count": 1367608
+        }
+      },
+      "http_req_waiting": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "p(99)": 2197.6280399999996,
+          "count": 645,
+          "avg": 603.062224806202,
+          "min": 148.196,
+          "max": 2506.164,
+          "p(50)": 486.484,
+          "p(95)": 1401.0681999999997
+        }
+      },
+      "iteration_duration": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "p(99)": 3201.8094129599995,
+          "count": 645,
+          "avg": 1613.5094354744167,
+          "min": 1152.767667,
+          "max": 3859.71975,
+          "p(50)": 1493.657542,
+          "p(95)": 2438.9012503999993
+        }
+      },
+      "claim_submissions": {
+        "type": "counter",
+        "contains": "default",
+        "values": {
+          "count": 645,
+          "rate": 4.267021809899574
+        }
+      },
+      "http_req_receiving": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "p(99)": 17.874999999999993,
+          "count": 645,
+          "avg": 0.9526000000000021,
+          "min": 0.034,
+          "max": 103.785,
+          "p(50)": 0.176,
+          "p(95)": 2.772799999999992
+        }
+      }
+    }
+  }
+}
