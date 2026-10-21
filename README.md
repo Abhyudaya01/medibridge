@@ -1,8 +1,12 @@
-# MediBridge · v0.4.0
+# MediBridge · v0.5.0
 
 Healthcare Claims & Prior Authorization Exception and Recovery Engine. Portfolio simulation on **synthetic data only**. **Not affiliated with any payer.** Never use real PHI, real member IDs, or real payer names or branding. All downstream processing is simulated locally; no healthcare services are called.
 
 Live demo: [MediBridge](https://medibridge-abhi.azurewebsites.net) · [Health](https://medibridge-abhi.azurewebsites.net/health) · [Swagger](https://medibridge-abhi.azurewebsites.net/swagger) · [GitHub](https://github.com/Abhyudaya01/medibridge)
+
+## Chunk 1c: measured chaos and HTTP load
+
+[Benchmark harnesses and measurement definitions](benchmarks/README.md) cover real processing-host kills/restarts against isolated SQLite databases and bounded k6 POST load. The chaos default is 1,000 iterations of 50 synthetic claims, 10% invalid, with 20% probabilistic transient failure injection. A harness-only virtual clock advances lease/backoff deadlines; these results measure correctness under crashes, not production recovery latency. [Measured results](benchmarks/RESULTS.md) link to the actual JSON artifacts. Live load requires separate approval for a temporary B1 window and verified restoration to F1; the exact version and SKU tested are recorded. No benchmark runs automatically from the demo page.
 
 ## Chunk 1b: reliable processing
 
@@ -76,7 +80,7 @@ flowchart LR
 - `src/MediBridge.Core`: domain types, validation, duplicate identity, and deterministic exception/recovery simulation. No framework or third-party dependencies.
 - `src/MediBridge.Infrastructure`: EF Core SQLite/SQL Server providers, atomic claim and audit writes, append-only guards, and idempotent seed.
 - `tests/MediBridge.Tests`: domain, duplicate, concurrency, audit, seed, and endpoint tests. Each API factory uses an isolated temporary SQLite file.
-- `benchmarks/`: reserved for measured harness runs in a later phase. No benchmark numbers are claimed.
+- `benchmarks/`: local SQLite chaos controller/worker, k6 HTTP load script, measured JSON artifacts, and result ledger.
 
 Claim intake, its outbox/queue state, event timeline, and cached HTTP response commit in one EF transaction. Subsequent worker transitions each append their own audit events. Claim changes without a new audit event, claim deletion, and tracked audit-event modifications/deletions are rejected by the context. SQLite and SQL Server triggers additionally prohibit direct SQL updates/deletes on `ClaimEvents`. These are application integrity controls, not a tamper-proof ledger against database administrators. Use `ClaimsDbContext` for claim writes.
 
@@ -91,7 +95,7 @@ dotnet test
 dotnet run --project src/MediBridge.Api --no-launch-profile --urls http://localhost:5080
 ```
 
-Open [the demo](http://localhost:5080/), [Swagger](http://localhost:5080/swagger), or [health](http://localhost:5080/health). Health returns `{"status":"ok","version":"0.4.0"}` and is a process liveness endpoint. Startup initializes storage and seeds the four scenarios before serving requests.
+Open [the demo](http://localhost:5080/), [Swagger](http://localhost:5080/swagger), or [health](http://localhost:5080/health). Health returns `{"status":"ok","version":"0.5.0"}` and is a process liveness endpoint. Startup initializes storage and seeds the four scenarios before serving requests.
 
 SQLite defaults to `src/MediBridge.Api/Data/medibridge.db` locally and `/home/data/medibridge.db` on Linux App Service. Override its path with `Database__Path` (configuration key `Database:Path`). Parent directories are created automatically. The database is outside the deployed application directory on Azure and persists across zip deployments when App Service storage is enabled.
 
@@ -103,7 +107,7 @@ Startup now applies provider-specific EF migrations. Known legacy EnsureCreated 
 
 | Method | Path | Behavior |
 |---|---|---|
-| GET | `/health` | 200 with status and version 0.4.0 |
+| GET | `/health` | 200 with status and version 0.5.0 |
 | GET | `/api/claims` | Ordered array of claims and current classification/validation failures |
 | GET | `/api/claims/{id}` | Claim, ordered full timeline, and validation failures; 404 if absent |
 | POST | `/api/claims` | Validate and atomically persist a claim with its timeline |
@@ -151,6 +155,7 @@ Watch a deployment with `gh run list --workflow deploy.yml`, then `gh run watch 
 - **Phase 0 (implemented):** synthetic claim domain, validation/classification, deterministic recovery scenarios, append-only timelines, EF persistence, demo monitor, tests, and CI deployment.
 - **Chunk 1a (implemented):** ISA-delimited 837P subset intake, located errors, 999-style results, atomic imports, five sample files, and Upload X12 demo panel.
 - **Chunk 1b (implemented):** durable idempotency, outbox/receipts, bounded retries, correction queue, fault injection, dual-provider migrations, and free-offer Azure SQL.
+- **Chunk 1c (implemented):** measured chaos/recovery and HTTP load harnesses; results include test environment and limitations.
 - **Phase 1 (next):** richer exception and recovery workflows on the validation/audit/intake foundation.
 - **Phase 2:** expanded synthetic prior-authorization scenarios, versioned rules, and review workflows.
-- **Phase 3:** load tests, fault injection, generators, and measured benchmark results. Every harness run must produce `benchmarks/results/*.json` and a row in `benchmarks/RESULTS.md`; never hardcode or fabricate results.
+- **Phase 3:** expand scale, workload generators, and measured benchmark coverage. Every harness run must produce `benchmarks/results/*.json` and a row in `benchmarks/RESULTS.md`; never hardcode or fabricate results.
