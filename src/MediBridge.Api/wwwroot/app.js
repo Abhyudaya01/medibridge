@@ -2,6 +2,12 @@
 const byId = id => document.getElementById(id);
 const form = byId('claim-form');
 let selectedId;
+const requestKeys = new Map();
+function requestKey(scope, body) {
+  const fingerprint = scope + '\n' + body;
+  if (!requestKeys.has(fingerprint)) requestKeys.set(fingerprint, crypto.randomUUID());
+  return requestKeys.get(fingerprint);
+}
 const element = (tag, text, className) => {
   const node = document.createElement(tag);
   if (text !== undefined) node.textContent = text;
@@ -30,12 +36,22 @@ async function loadClaims() {
     identity.append(button, element('small', claim.memberId));
     const status = element('td');
     status.append(element('span', claim.status, `badge ${claim.status}`));
-    row.append(identity, element('td', claim.serviceDate), element('td', new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(claim.amount)), status, element('td', claim.failureCategory));
+    row.append(identity, element('td', claim.serviceDate), element('td', new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(claim.amount)), status, element('td', claim.failureCategory), element('td', `${claim.attemptCount} attempts · ${claim.retryCount} retries`));
     return row;
   });
   byId('claims-body').replaceChildren(...rows);
   byId('load-status').textContent = claims.length ? '' : 'No claims have been recorded.';
   if (!selectedId && claims.length) await selectClaim(claims[0].id);
+  const [queueResponse, outboxResponse] = await Promise.all([fetch('/api/queues/correction'), fetch('/api/outbox')]);
+  if (!queueResponse.ok || !outboxResponse.ok) throw new Error('Processing status is temporarily unavailable.');
+  const queue = await queueResponse.json();
+  byId('correction-list').replaceChildren(...(queue.length ? queue.map(item => {
+    let reason = item.reason;
+    try { reason = JSON.parse(reason).map(f => `${f.RuleId || f.ruleId}: ${f.SuggestedFix || f.suggestedFix}`).join('; '); } catch { }
+    return element('li', `${item.claimId} · ${reason}`);
+  }) : [element('li', 'No claims awaiting correction.')]));
+  const messages = await outboxResponse.json();
+  byId('outbox-list').replaceChildren(...(messages.length ? messages.map(message => element('li', `${message.claimId} · ${message.state} · ${message.deliveries} deliveries${message.state === 'Pending' ? ` · due ${message.nextAttemptAt} UTC` : ''}`)) : [element('li', 'No outbox messages.')]));
 }
 async function selectClaim(id) {
   const response = await fetch(`/api/claims/${encodeURIComponent(id)}`);
@@ -64,14 +80,14 @@ form.addEventListener('submit', async event => {
   request.amount = Number(values.get('amount'));
   request.procedureCodes = values.get('procedureCodes').split(',').map(code => code.trim()).filter(Boolean);
   try {
-    const response = await fetch('/api/claims', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) });
+    const response = await fetch('/api/claims', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': requestKey('/api/claims', JSON.stringify(request)) }, body: JSON.stringify(request) });
     const data = await response.json();
     result.replaceChildren(element('strong', data.claim ? `${data.claim.id}: ${data.claim.status} (HTTP ${response.status})` : `Submission returned HTTP ${response.status}`));
     if (data.validation?.length) {
       const list = element('ul');
       data.validation.forEach(failure => list.append(element('li', `${failure.ruleId} · ${failure.field}: ${failure.suggestedFix}`)));
       result.append(list);
-    } else if (response.ok) result.append(element('p', 'All validation rules passed. Open the timeline to inspect processing events.'));
+    } else if (response.ok) result.append(element('p', 'Submission recorded. Processing is asynchronous; use Refresh claims to see attempts and the final outcome.'));
     else result.append(element('p', data.detail || 'Check the supplied JSON fields.'));
     if (data.claim) {
       selectedId = data.claim.id;
@@ -106,7 +122,7 @@ byId('x12-form').addEventListener('submit', async event => {
   status.textContent = 'Parsing the synthetic interchange…';
   results.replaceChildren();
   try {
-    const response = await fetch('/api/x12/837', { method: 'POST', headers: { 'Content-Type': 'text/plain; charset=utf-8' }, body: x12Text.value });
+    const response = await fetch('/api/x12/837', { method: 'POST', headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Idempotency-Key': requestKey('/api/x12/837', x12Text.value) }, body: x12Text.value });
     if (![200, 422].includes(response.status)) throw new Error(`HTTP ${response.status}; verify content type, encoding, and size.`);
     const data = await response.json();
     status.textContent = `${data.interchanges.length} interchange(s) processed · HTTP ${response.status}. Accepted syntax and claim outcomes are reported separately.`;

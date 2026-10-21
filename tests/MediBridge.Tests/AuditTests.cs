@@ -12,8 +12,8 @@ public class AuditTests
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<ClaimsDbContext>().UseSqlite(connection).Options;
-        await using var db = new ClaimsDbContext(options);
+        var options = new DbContextOptionsBuilder<SqliteClaimsDbContext>().UseSqlite(connection).Options;
+        await using var db = new SqliteClaimsDbContext(options);
         await db.InitializeAsync();
         db.Claims.Add(ClaimRuleTests.Valid());
         await Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
@@ -36,7 +36,7 @@ public class AuditTests
         await Assert.ThrowsAsync<SqliteException>(() => db.Database.ExecuteSqlRawAsync("UPDATE ClaimEvents SET Detail = 'Changed'"));
         await Assert.ThrowsAsync<SqliteException>(() => db.Database.ExecuteSqlRawAsync("DELETE FROM ClaimEvents"));
         Assert.Equal(count, await db.ClaimEvents.CountAsync());
-        Assert.Equal(ClaimStatus.Succeeded, (await db.Claims.AsNoTracking().SingleAsync()).Status);
+        Assert.Equal(ClaimStatus.PendingProcessing, (await db.Claims.AsNoTracking().SingleAsync()).Status);
     }
 
     [Fact]
@@ -44,8 +44,8 @@ public class AuditTests
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<ClaimsDbContext>().UseSqlite(connection).Options;
-        await using var db = new ClaimsDbContext(options);
+        var options = new DbContextOptionsBuilder<SqliteClaimsDbContext>().UseSqlite(connection).Options;
+        await using var db = new SqliteClaimsDbContext(options);
         await db.InitializeAsync();
         var store = new ClaimStore(db, new ClaimWriteLock());
         await store.SubmitAsync(ClaimRuleTests.Valid(), Simulation.None, new DateTime(2026, 1, 20));
@@ -61,9 +61,9 @@ public class AuditTests
     [Fact]
     public void SqlServerMappingIncludesDuplicateConstraintAndPortableSchema()
     {
-        var options = new DbContextOptionsBuilder<ClaimsDbContext>()
+        var options = new DbContextOptionsBuilder<SqlClaimsDbContext>()
             .UseSqlServer("Server=localhost;Database=SyntheticSchemaOnly;Integrated Security=true;TrustServerCertificate=true").Options;
-        using var db = new ClaimsDbContext(options);
+        using var db = new SqlClaimsDbContext(options);
         var script = db.Database.GenerateCreateScript();
         Assert.Contains("CREATE TABLE [Claims]", script);
         Assert.Contains("CREATE TABLE [ClaimEvents]", script);

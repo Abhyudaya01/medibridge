@@ -147,10 +147,11 @@ public class ClaimRuleTests
         var first = ClaimProcessor.Process(Valid(), false, Simulation.DownstreamTimeout, time);
         var second = ClaimProcessor.Process(Valid(), false, Simulation.DownstreamTimeout, time);
         Assert.Equal(JsonSerializer.Serialize(first), JsonSerializer.Serialize(second));
-        Assert.Equal(ClaimStatus.Succeeded, first.Claim.Status);
+        Assert.Equal(ClaimStatus.PendingProcessing, first.Claim.Status);
         Assert.Equal(FailureCategory.None, first.Claim.FailureCategory);
-        Assert.Equal(new[] { "Timeout", "RetryPending", "Retrying", "Succeeded" }, first.Timeline.TakeLast(4).Select(e => e.Outcome));
-        Assert.True(first.Timeline.Zip(first.Timeline.Skip(1)).All(pair => pair.First.Timestamp < pair.Second.Timestamp));
+        Assert.Equal("PendingProcessing", first.Timeline.Last().Outcome);
+        Assert.Equal(Simulation.DownstreamTimeout, first.Claim.Simulation);
+        Assert.True(first.Timeline.Zip(first.Timeline.Skip(1)).All(pair => pair.First.Timestamp <= pair.Second.Timestamp));
     }
 
     [Theory]

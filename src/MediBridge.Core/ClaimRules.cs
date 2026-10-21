@@ -71,6 +71,6 @@ public static class ClaimRules
     }
 
     public static bool IsDuplicate(Claim claim, IEnumerable<Claim> existing) =>
-        existing.Any(other => other.Status is ClaimStatus.Succeeded or ClaimStatus.RetryPending or ClaimStatus.ManualReview
+        existing.Any(other => other.Status is ClaimStatus.Succeeded or ClaimStatus.RetryPending or ClaimStatus.ManualReview or ClaimStatus.PendingProcessing or ClaimStatus.Processing
             && DuplicateKey(other) == DuplicateKey(claim));
 }

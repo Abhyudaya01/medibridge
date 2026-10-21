@@ -69,3 +69,6 @@ textarea { width: 100%; display: block; margin-top: 8px; padding: 12px; border: 
 .x12-result ul { padding-left: 22px; font-size: .85rem; }
 .x12-result li { margin: 10px 0; overflow-wrap: anywhere; }
 .x12-result h3 { margin-top: 18px; }
+
+#correction-list, #outbox-list { padding-left: 18px; font-size: .82rem; overflow-wrap: anywhere; }
+#correction-list li, #outbox-list li { margin: 10px 0; }

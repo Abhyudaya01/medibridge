@@ -38,24 +38,17 @@ public static class ClaimProcessor
             {
                 Add("DuplicateDetection", "Passed", "No matching claim found.");
                 Add("RuleVersion", "Passed", $"Active version {ClaimRules.Version} confirmed.");
-                if (simulation == Simulation.DownstreamTimeout)
-                {
-                    claim.Status = ClaimStatus.RetryPending;
-                    claim.FailureCategory = FailureCategory.Transient;
-                    Add("Downstream", "Timeout", "Simulated downstream timeout on attempt 1; no external service was called.");
-                    Add("Recovery", "RetryPending", "Transient failure classified; deterministic retry scheduled.");
-                    Add("Recovery", "Retrying", "Simulated retry attempt 2 started.");
-                }
-                claim.Status = ClaimStatus.Succeeded;
+                claim.Status = ClaimStatus.PendingProcessing;
                 claim.FailureCategory = FailureCategory.None;
-                Add("Downstream", "Succeeded", simulation == Simulation.DownstreamTimeout ? "Simulated retry attempt 2 succeeded; transient failure recovered." : "Synthetic downstream processing succeeded.");
+                claim.Simulation = simulation;
+                Add("Outbox", "PendingProcessing", "Validated synthetic claim queued for durable downstream processing.");
             }
         }
         return new(claim, events);
 
         void Add(string stage, string outcome, string detail) => events.Add(new ClaimEvent
         {
-            ClaimId = claim.Id, Timestamp = timestamp.AddSeconds(events.Count), Stage = stage, Outcome = outcome, Detail = detail
+            ClaimId = claim.Id, Timestamp = timestamp, Stage = stage, Outcome = outcome, Detail = detail
         });
     }
 }
