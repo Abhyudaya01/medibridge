@@ -3,52 +3,61 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="MediBridge: a healthcare claims and prior authorization exception and recovery engine using synthetic data.">
-  <title>MediBridge | Exception &amp; Recovery Engine</title>
-  <style>
-    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #173243; background: #f3f7f9; }
-    * { box-sizing: border-box; }
-    body { margin: 0; line-height: 1.65; }
-    main { max-width: 940px; margin: auto; padding: 72px 24px; }
-    .eyebrow { color: #236b74; font-size: .8rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
-    h1 { font-size: clamp(2.8rem, 8vw, 4.6rem); line-height: 1.1; margin: 16px 0 24px; letter-spacing: -.04em; }
-    .description { max-width: 700px; color: #435b69; font-size: 1.15rem; }
-    .notice { margin: 28px 0; padding: 14px 18px; background: #e0efed; border-left: 4px solid #247267; border-radius: 4px; }
-    nav { display: flex; flex-wrap: wrap; gap: 16px; margin: 28px 0 48px; }
-    a { color: #165b77; text-underline-offset: 4px; }
-    a:hover { color: #0b394d; }
-    a:focus-visible { outline: 3px solid #247267; outline-offset: 5px; }
-    h2 { font-size: 1.6rem; }
-    ol { padding: 0; list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-    li { background: white; border: 1px solid #dbe5ea; border-radius: 10px; padding: 24px; }
-    li h3 { margin: 8px 0; font-size: 1.1rem; }
-    li p { color: #526773; margin-bottom: 0; }
-    .phase { color: #236b74; font-size: .85rem; font-weight: 700; }
-    footer { border-top: 1px solid #dbe5ea; margin-top: 40px; padding-top: 20px; color: #526773; font-size: .9rem; }
-    @media (max-width: 650px) { main { padding-top: 40px; } ol { grid-template-columns: 1fr; } }
-  </style>
+  <meta name="description" content="MediBridge synthetic healthcare claims and prior authorization exception and recovery simulation.">
+  <title>MediBridge | Transaction Monitor</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
 </head>
 <body>
   <main>
     <header>
-      <p class="eyebrow">Healthcare workflow simulation · v0.1.0</p>
-      <h1>MediBridge</h1>
-      <p class="description">MediBridge is a healthcare claims &amp; prior authorization exception and recovery engine built on synthetic data. This portfolio simulation explores deterministic exception classification, auditable recovery workflows, and measurable system reliability to show how complex administrative workflows can become easier to understand and resolve.</p>
-      <p class="notice"><strong>Synthetic data. Not affiliated with any payer.</strong></p>
-      <nav aria-label="Project links">
-        <a href="/health">API health</a>
-        <a href="https://github.com/Abhyudaya01/medibridge">GitHub repository</a>
-      </nav>
+      <div class="brand"><span class="mark" aria-hidden="true">M</span><div><p class="eyebrow">Exception &amp; recovery engine</p><h1>MediBridge</h1></div><span class="version">v0.2.0</span></div>
+      <p class="description">A healthcare claims and prior authorization exception and recovery engine on synthetic data. Explore deterministic claim validation, simulated downstream recovery, duplicate suppression, and rule-version review through an auditable transaction timeline.</p>
+      <p class="notice"><strong>Synthetic data. Not affiliated with any payer.</strong> Use fabricated identifiers only. No external healthcare services are called.</p>
+      <nav aria-label="Project links"><a href="/health">API health</a><a href="/swagger">Swagger API</a><a href="https://github.com/Abhyudaya01/medibridge">GitHub repository</a></nav>
     </header>
-    <section aria-labelledby="roadmap-title">
-      <h2 id="roadmap-title">Roadmap</h2>
-      <ol>
-        <li><span class="phase">Phase 1</span><h3>Foundation</h3><p>Establish the solution, health endpoint, and integration test baseline.</p></li>
-        <li><span class="phase">Phase 2</span><h3>Exceptions &amp; recovery</h3><p>Introduce deterministic classification, recovery workflows, and append-only auditing.</p></li>
-        <li><span class="phase">Phase 3</span><h3>Reliability &amp; measurement</h3><p>Exercise synthetic workloads, inject faults, and publish measured benchmark results.</p></li>
-      </ol>
+    <section aria-labelledby="summary-title">
+      <div class="section-heading"><h2 id="summary-title">Operations overview</h2><button id="refresh" type="button">Refresh claims</button></div>
+      <div class="summary">
+        <article><p>Total claims</p><strong id="total">—</strong></article>
+        <article><p>Succeeded</p><strong id="succeeded">—</strong></article>
+        <article><p>Needs attention</p><strong id="attention">—</strong></article>
+        <article><p>Duplicates suppressed</p><strong id="suppressed">—</strong></article>
+      </div>
+      <p id="load-status" role="status"></p>
     </section>
-    <footer>Portfolio simulation · Synthetic records only</footer>
+    <div class="workspace">
+      <section class="panel monitor" aria-labelledby="monitor-title">
+        <h2 id="monitor-title">Transaction monitor</h2>
+        <p class="muted">Select a claim to inspect its event history.</p>
+        <div class="table-scroll"><table><caption class="sr-only">Synthetic claims and processing outcomes</caption><thead><tr><th scope="col">Claim / member</th><th scope="col">Service date</th><th scope="col">Amount</th><th scope="col">Status</th><th scope="col">Category</th></tr></thead><tbody id="claims-body"></tbody></table></div>
+      </section>
+      <section class="panel timeline-panel" aria-labelledby="timeline-title">
+        <h2 id="timeline-title">Claim timeline</h2>
+        <p id="timeline-summary" class="muted">Choose a transaction to view its timeline.</p>
+        <ol id="timeline" class="timeline"></ol>
+      </section>
+    </div>
+    <section class="panel" aria-labelledby="submit-title">
+      <div class="section-heading"><div><p class="eyebrow">Synthetic sandbox</p><h2 id="submit-title">Submit a test claim</h2></div><button id="new-id" type="button">New claim ID</button></div>
+      <p class="muted">The fabricated demo NPI passes the checksum only; it does not identify a real provider. Reuse a provider, member, date, and code set to try duplicate detection.</p>
+      <form id="claim-form">
+        <div class="form-grid">
+          <label>Claim ID<input name="id" required maxlength="64"></label>
+          <label>Synthetic provider NPI<input name="providerNpi" value="0000000006" maxlength="200" inputmode="numeric"><small>Leave blank to try a rejection.</small></label>
+          <label>Synthetic member ID<input name="memberId" value="SYN-DEMO-NEW" required maxlength="64" pattern="SYN-.*"></label>
+          <label>Service date<input name="serviceDate" type="date" value="2026-01-20" required></label>
+          <label>Procedure codes<input name="procedureCodes" value="SYN-PROC-02" required><small>Comma-separated fabricated codes.</small></label>
+          <label>Amount ($)<input name="amount" type="number" value="125.50" step="0.01" min="0.01" required></label>
+          <label>Rule version<select name="ruleVersion"><option value="phase0-v1">phase0-v1 · current</option><option value="phase0-v0">phase0-v0 · conflict</option></select></label>
+          <label>Downstream simulation<select name="simulation"><option value="None">Success</option><option value="DownstreamTimeout">Timeout → retry → success</option></select></label>
+        </div>
+        <button id="submit-button" class="primary" type="submit">Validate &amp; process claim</button>
+      </form>
+      <div id="submission-result" role="status" aria-live="polite"></div>
+    </section>
+    <section aria-labelledby="roadmap-title"><h2 id="roadmap-title">Roadmap</h2><ol class="roadmap"><li><strong>Phase 1</strong><h3>Recovery workflows</h3><p>Extend the Phase 0 validation and audit foundation with richer exception handling.</p></li><li><strong>Phase 2</strong><h3>Prior authorization</h3><p>Expand synthetic authorization scenarios, rule versions, and review workflows.</p></li><li><strong>Phase 3</strong><h3>Reliability &amp; measurement</h3><p>Add load tests, fault injection, and measured benchmark results.</p></li></ol></section>
+    <footer>Portfolio simulation · Synthetic records only · Phase 0</footer>
   </main>
 </body>
 </html>

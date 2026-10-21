@@ -5,6 +5,12 @@
     <ProjectReference Include="..\MediBridge.Infrastructure\MediBridge.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.0.1" />
+    <!-- Pin patched OpenAPI runtime within the compatible 2.x line. -->
+    <PackageReference Include="Microsoft.OpenApi" Version="2.13.0" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>

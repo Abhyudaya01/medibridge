@@ -481,3 +481,11 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Local synthetic SQLite state and deployment credentials
+**/Data/
+*.db
+*.db-shm
+*.db-wal
+*.PublishSettings
+*.publishsettings

@@ -4,11 +4,11 @@ using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace MediBridge.Tests;
 
-public class HealthTests : IClassFixture<WebApplicationFactory<Program>>
+public class HealthTests : IClassFixture<ClaimsApiFactory>
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly ClaimsApiFactory _factory;
 
-    public HealthTests(WebApplicationFactory<Program> factory) => _factory = factory;
+    public HealthTests(ClaimsApiFactory factory) => _factory = factory;
 
     [Fact]
     public async Task Health_ReturnsOkAndApplicationVersion()
@@ -23,6 +23,6 @@ public class HealthTests : IClassFixture<WebApplicationFactory<Program>>
         Assert.NotNull(payload);
         Assert.Equal(2, payload.Count);
         Assert.Equal("ok", payload["status"]);
-        Assert.Equal("0.1.0", payload["version"]);
+        Assert.Equal("0.2.0", payload["version"]);
     }
 }
