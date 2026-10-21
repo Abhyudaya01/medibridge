@@ -23,4 +23,7 @@
     <ProjectReference Include="..\..\src\MediBridge.Api\MediBridge.Api.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="../../samples/x12/*.837" Link="samples/x12/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

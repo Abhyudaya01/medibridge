@@ -1,8 +1,22 @@
-# MediBridge · v0.2.0
+# MediBridge · v0.3.0
 
 Healthcare Claims & Prior Authorization Exception and Recovery Engine. Portfolio simulation on **synthetic data only**. **Not affiliated with any payer.** Never use real PHI, real member IDs, or real payer names or branding. All downstream processing is simulated locally; no healthcare services are called.
 
 Live demo: [MediBridge](https://medibridge-abhi.azurewebsites.net) · [Health](https://medibridge-abhi.azurewebsites.net/health) · [Swagger](https://medibridge-abhi.azurewebsites.net/swagger) · [GitHub](https://github.com/Abhyudaya01/medibridge)
+
+## Chunk 1a: X12 837P intake
+
+The Upload X12 panel accepts a synthetic file or pasted interchange and shows parsed claims, exact segment/element errors, and a 999-style result. `POST /api/x12/837` consumes `text/plain` and uses each ISA's declared delimiters. Supported segments are ISA/GS/ST, BHT, provider/subscriber NM1, CLM, HI, SV1, DTP, and SE/GE/IEA. This is a documented portfolio subset and acknowledgment simulation, not a complete production 837P/999 implementation.
+
+See [the exact grammar, mappings, error positions, and acknowledgment contract](docs/x12-837p-subset.md) and [five synthetic samples](samples/x12/README.md).
+
+```sh
+curl -i http://localhost:5080/api/x12/837 \
+  -H 'Content-Type: text/plain; charset=utf-8' \
+  --data-binary @samples/x12/valid.837
+```
+
+Each interchange is validated completely before any of its claims is saved. Accepted claims and their audit events commit atomically; a rejected interchange makes no claim writes. A request may contain multiple interchanges with different delimiters and independent results. HTTP 422 means all interchanges were rejected; 200 means at least one was accepted. A duplicate can receive an Accepted syntax acknowledgment while its claim outcome is Suppressed. Existing claim IDs return DuplicateId without changing history. Raw X12 is not stored; HI diagnoses and source controls are retained in X12Intake audit metadata. No schema change is needed.
 
 ## Phase 0 behavior
 
@@ -27,6 +41,10 @@ The idempotent seed inserts only missing claim IDs; restarting never overwrites 
 flowchart LR
     Browser[Static HTML + vanilla JS] --> API[ASP.NET Core minimal API]
     Swagger[Swagger UI] --> API
+    X12[837P text/plain intake] --> Parser[Core: ISA tokenizer + subset parser]
+    Parser --> Ack[999-style acknowledgment]
+    Parser --> Batch[Infrastructure: atomic interchange import]
+    Batch --> EF
     API --> Core[Core: claims, rules, deterministic processor]
     API --> Store[Infrastructure: ClaimStore]
     Store --> Core
@@ -61,7 +79,7 @@ dotnet test
 dotnet run --project src/MediBridge.Api --no-launch-profile --urls http://localhost:5080
 ```
 
-Open [the demo](http://localhost:5080/), [Swagger](http://localhost:5080/swagger), or [health](http://localhost:5080/health). Health returns `{"status":"ok","version":"0.2.0"}` and is a process liveness endpoint. Startup initializes storage and seeds the four scenarios before serving requests.
+Open [the demo](http://localhost:5080/), [Swagger](http://localhost:5080/swagger), or [health](http://localhost:5080/health). Health returns `{"status":"ok","version":"0.3.0"}` and is a process liveness endpoint. Startup initializes storage and seeds the four scenarios before serving requests.
 
 SQLite defaults to `src/MediBridge.Api/Data/medibridge.db` locally and `/home/data/medibridge.db` on Linux App Service. Override its path with `Database__Path` (configuration key `Database:Path`). Parent directories are created automatically. The database is outside the deployed application directory on Azure and persists across zip deployments when App Service storage is enabled.
 
@@ -73,10 +91,11 @@ Phase 0 initializes a new database with `EnsureCreated`; it does not upgrade an 
 
 | Method | Path | Behavior |
 |---|---|---|
-| GET | `/health` | 200 with status and version 0.2.0 |
+| GET | `/health` | 200 with status and version 0.3.0 |
 | GET | `/api/claims` | Ordered array of claims and current classification/validation failures |
 | GET | `/api/claims/{id}` | Claim, ordered full timeline, and validation failures; 404 if absent |
 | POST | `/api/claims` | Validate and atomically persist a claim with its timeline |
+| POST | `/api/x12/837` | text/plain subset intake with per-interchange acknowledgment, parsed claims, and import outcomes |
 | GET | `/swagger` | Interactive API documentation; schema at `/swagger/v1/swagger.json` |
 
 Example synthetic submission:
@@ -115,6 +134,7 @@ Watch a deployment with `gh run list --workflow deploy.yml`, then `gh run watch 
 ## Roadmap
 
 - **Phase 0 (implemented):** synthetic claim domain, validation/classification, deterministic recovery scenarios, append-only timelines, EF persistence, demo monitor, tests, and CI deployment.
-- **Phase 1:** richer exception and recovery workflows on the validation/audit foundation.
+- **Chunk 1a (implemented):** ISA-delimited 837P subset intake, located errors, 999-style results, atomic imports, five sample files, and Upload X12 demo panel.
+- **Phase 1 (next):** richer exception and recovery workflows on the validation/audit/intake foundation.
 - **Phase 2:** expanded synthetic prior-authorization scenarios, versioned rules, and review workflows.
 - **Phase 3:** load tests, fault injection, generators, and measured benchmark results. Every harness run must produce `benchmarks/results/*.json` and a row in `benchmarks/RESULTS.md`; never hardcode or fabricate results.
