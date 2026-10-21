@@ -53,7 +53,7 @@ public sealed class ClaimStore(ClaimsDbContext db, ClaimWriteLock writeLock)
         db.ClaimEvents.AddRange(result.Timeline);
     }
 
-    private static bool IsUniqueViolation(DbUpdateException exception) => exception.InnerException switch
+    internal static bool IsUniqueViolation(DbUpdateException exception) => exception.InnerException switch
     {
         SqliteException sqlite => sqlite.SqliteExtendedErrorCode is 1555 or 2067,
         SqlException sql => sql.Number is 2601 or 2627,

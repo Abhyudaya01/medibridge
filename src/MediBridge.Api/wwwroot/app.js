@@ -85,3 +85,54 @@ byId('new-id').addEventListener('click', newId);
 byId('refresh').addEventListener('click', () => loadClaims().catch(showLoadError));
 newId();
 loadClaims().catch(showLoadError);
+
+const x12Text = byId('x12-text');
+byId('x12-file').addEventListener('change', async event => {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (file.size > 65536) { byId('x12-status').textContent = 'File exceeds the 64 KiB limit.'; x12Text.value = ''; return; }
+  try {
+    x12Text.value = await file.text();
+    byId('x12-status').textContent = `${file.name} loaded. Select Import X12 to process it.`;
+  } catch (error) { byId('x12-status').textContent = `File could not be read: ${error.message}`; }
+});
+byId('x12-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = byId('x12-submit');
+  const status = byId('x12-status');
+  const results = byId('x12-results');
+  if (new TextEncoder().encode(x12Text.value).length > 65536) { status.textContent = 'Input exceeds the 64 KiB limit.'; return; }
+  button.disabled = true;
+  status.textContent = 'Parsing the synthetic interchange…';
+  results.replaceChildren();
+  try {
+    const response = await fetch('/api/x12/837', { method: 'POST', headers: { 'Content-Type': 'text/plain; charset=utf-8' }, body: x12Text.value });
+    if (![200, 422].includes(response.status)) throw new Error(`HTTP ${response.status}; verify content type, encoding, and size.`);
+    const data = await response.json();
+    status.textContent = `${data.interchanges.length} interchange(s) processed · HTTP ${response.status}. Accepted syntax and claim outcomes are reported separately.`;
+    data.interchanges.forEach((interchange, index) => {
+      const section = element('section', undefined, 'x12-result');
+      section.append(element('h3', `Interchange ${index + 1} · ${interchange.interchangeControlNumber || 'Unknown control'} · ${interchange.status}`));
+      if (interchange.acknowledgment.errors.length) {
+        const errors = element('ul');
+        interchange.acknowledgment.errors.forEach(error => errors.append(element('li', `${error.segmentId} · segment ${error.segmentPosition} · ${error.elementPosition ? `element ${error.elementPosition}` : 'segment error'}${error.componentPosition ? ` · component ${error.componentPosition}` : ''}: ${error.reason}`)));
+        section.append(errors);
+      }
+      section.append(element('h3', 'Parsed claims'));
+      if (!interchange.parsedClaims.length) section.append(element('p', 'No claims could be parsed.'));
+      else {
+        const list = element('ul');
+        interchange.parsedClaims.forEach((parsed, claimIndex) => {
+          const claim = parsed.claim;
+          const outcome = interchange.outcomes[claimIndex];
+          list.append(element('li', `${claim.id} · ${claim.memberId} · ${claim.serviceDate} · ${claim.procedureCodes.join(', ')} · $${Number(claim.amount).toFixed(2)} · ${outcome?.status || 'Not imported (interchange rejected)'} · HI: ${parsed.diagnosisCodes.join(', ')}`));
+        });
+        section.append(list);
+      }
+      section.append(element('h3', '999-style acknowledgment'), element('pre', interchange.acknowledgment.text));
+      results.append(section);
+    });
+    await loadClaims();
+  } catch (error) { status.textContent = `X12 intake failed: ${error.message}`; }
+  finally { button.disabled = false; }
+});

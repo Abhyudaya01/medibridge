@@ -9,11 +9,12 @@ builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.C
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options => options.SwaggerDoc("v1", new Microsoft.OpenApi.OpenApiInfo
 {
-    Title = "MediBridge synthetic claims API", Version = "0.2.0",
+    Title = "MediBridge synthetic claims API", Version = "0.3.0",
     Description = "Synthetic data only. Not affiliated with any payer. No real member or provider data."
 }));
 builder.Services.AddSingleton<ClaimWriteLock>();
 builder.Services.AddScoped<ClaimStore>();
+builder.Services.AddScoped<X12Intake>();
 builder.Services.AddDbContext<ClaimsDbContext>(options =>
 {
     var sql = builder.Configuration.GetConnectionString("Sql");
@@ -41,7 +42,7 @@ app.UseStaticFiles();
 app.UseSwagger();
 app.UseSwaggerUI();
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok", version = "0.2.0" }));
+app.MapGet("/health", () => Results.Ok(new { status = "ok", version = "0.3.0" }));
 app.MapGet("/api/claims", async (ClaimsDbContext db, CancellationToken cancellationToken) =>
     Results.Ok(await db.Claims.AsNoTracking().OrderBy(c => c.Id).ToListAsync(cancellationToken)));
 
@@ -79,6 +80,41 @@ app.MapPost("/api/claims", async (ClaimSubmission request, ClaimStore store, Can
         _ => Results.Created($"/api/claims/{Uri.EscapeDataString(claim.Id)}", response)
     };
 });
+
+app.MapPost("/api/x12/837", async (HttpRequest request, X12Intake intake, CancellationToken cancellationToken) =>
+{
+    if (!Microsoft.Net.Http.Headers.MediaTypeHeaderValue.TryParse(request.ContentType, out var contentType)
+        || !contentType.MediaType.Equals("text/plain", StringComparison.OrdinalIgnoreCase)
+        || (contentType.Charset.HasValue && !contentType.Charset.Equals("utf-8", StringComparison.OrdinalIgnoreCase)))
+        return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
+    using var reader = new StreamReader(request.Body, new System.Text.UTF8Encoding(false, true), detectEncodingFromByteOrderMarks: false);
+    string input;
+    if (request.ContentLength > 65_536) return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+    try
+    {
+        var buffer = new char[65_537];
+        var length = 0;
+        while (length < buffer.Length)
+        {
+            var read = await reader.ReadAsync(buffer.AsMemory(length), cancellationToken);
+            if (read == 0) break;
+            length += read;
+        }
+        if (length > 65_536) return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        input = new string(buffer, 0, length);
+        if (System.Text.Encoding.UTF8.GetByteCount(input) > 65_536) return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+    }
+    catch (System.Text.DecoderFallbackException)
+    {
+        return Results.BadRequest(new { detail = "Use UTF-8 text containing the documented ASCII X12 subset." });
+    }
+    var results = await intake.ImportAsync(input, DateTime.UtcNow, cancellationToken);
+    return results.All(result => result.Status == "Rejected")
+        ? Results.UnprocessableEntity(new { interchanges = results })
+        : Results.Ok(new { interchanges = results });
+}).Accepts<string>("text/plain").Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status422UnprocessableEntity)
+  .Produces(StatusCodes.Status415UnsupportedMediaType).Produces(StatusCodes.Status413PayloadTooLarge)
+  .WithSummary("Import the synthetic 837P subset and return per-interchange 999-style acknowledgments.");
 
 app.Run();
 

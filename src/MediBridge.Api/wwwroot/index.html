@@ -11,7 +11,7 @@
 <body>
   <main>
     <header>
-      <div class="brand"><span class="mark" aria-hidden="true">M</span><div><p class="eyebrow">Exception &amp; recovery engine</p><h1>MediBridge</h1></div><span class="version">v0.2.0</span></div>
+      <div class="brand"><span class="mark" aria-hidden="true">M</span><div><p class="eyebrow">Exception &amp; recovery engine</p><h1>MediBridge</h1></div><span class="version">v0.3.0</span></div>
       <p class="description">A healthcare claims and prior authorization exception and recovery engine on synthetic data. Explore deterministic claim validation, simulated downstream recovery, duplicate suppression, and rule-version review through an auditable transaction timeline.</p>
       <p class="notice"><strong>Synthetic data. Not affiliated with any payer.</strong> Use fabricated identifiers only. No external healthcare services are called.</p>
       <nav aria-label="Project links"><a href="/health">API health</a><a href="/swagger">Swagger API</a><a href="https://github.com/Abhyudaya01/medibridge">GitHub repository</a></nav>
@@ -38,6 +38,19 @@
         <ol id="timeline" class="timeline"></ol>
       </section>
     </div>
+    <section class="panel" aria-labelledby="x12-title">
+      <p class="eyebrow">837P intake · documented segment subset</p>
+      <h2 id="x12-title">Upload X12</h2>
+      <p class="muted">Choose a synthetic .837 or text file, or paste an interchange below. Acceptance checks the documented subset; the 999-style result is a portfolio simulation.</p>
+      <form id="x12-form">
+        <label>Synthetic X12 file<input id="x12-file" type="file" accept=".837,.edi,.txt,text/plain"></label>
+        <label>X12 interchange<textarea id="x12-text" rows="8" spellcheck="false" placeholder="ISA…" required aria-describedby="x12-help"></textarea></label>
+        <p id="x12-help" class="muted">Maximum 64 KiB. ISA declares delimiters. Use test indicator T and fabricated SYN- member IDs. Parsing is complete before accepted claims are imported.</p>
+        <button id="x12-submit" class="primary" type="submit">Import X12 &amp; show 999</button>
+      </form>
+      <div id="x12-status" role="status" aria-live="polite"></div>
+      <div id="x12-results"></div>
+    </section>
     <section class="panel" aria-labelledby="submit-title">
       <div class="section-heading"><div><p class="eyebrow">Synthetic sandbox</p><h2 id="submit-title">Submit a test claim</h2></div><button id="new-id" type="button">New claim ID</button></div>
       <p class="muted">The fabricated demo NPI passes the checksum only; it does not identify a real provider. Reuse a provider, member, date, and code set to try duplicate detection.</p>
@@ -57,7 +70,7 @@
       <div id="submission-result" role="status" aria-live="polite"></div>
     </section>
     <section aria-labelledby="roadmap-title"><h2 id="roadmap-title">Roadmap</h2><ol class="roadmap"><li><strong>Phase 1</strong><h3>Recovery workflows</h3><p>Extend the Phase 0 validation and audit foundation with richer exception handling.</p></li><li><strong>Phase 2</strong><h3>Prior authorization</h3><p>Expand synthetic authorization scenarios, rule versions, and review workflows.</p></li><li><strong>Phase 3</strong><h3>Reliability &amp; measurement</h3><p>Add load tests, fault injection, and measured benchmark results.</p></li></ol></section>
-    <footer>Portfolio simulation · Synthetic records only · Phase 0</footer>
+    <footer>Portfolio simulation · Synthetic records only · Chunk 1a: X12 intake</footer>
   </main>
 </body>
 </html>
