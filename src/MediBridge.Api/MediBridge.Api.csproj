@@ -11,6 +11,13 @@
     <PackageReference Include="Microsoft.OpenApi" Version="2.13.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Publish the committed measurement itself; the UI never embeds invented benchmark numbers. -->
+    <Content Include="../../benchmarks/results/shadow.json" Link="wwwroot/benchmarks/shadow.json"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"
+             Condition="Exists('../../benchmarks/results/shadow.json')" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>

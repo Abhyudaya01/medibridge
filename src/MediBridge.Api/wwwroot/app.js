@@ -361,3 +361,19 @@ byId('rules-sample').addEventListener('click', async () => {
   finally { ruleRequestInFlight = false; await loadRules().catch(error => byId('rules-status').textContent = error.message); }
 });
 loadRules().catch(error => byId('rules-status').textContent = error.message);
+
+
+async function loadRecordedShadowBenchmark() {
+  const response = await fetch('/benchmarks/shadow.json');
+  if (!response.ok) throw new Error('Recorded local benchmark is unavailable. See the measured results ledger.');
+  const report = await response.json();
+  if (report.status !== 'completed') throw new Error('The recorded benchmark did not complete successfully. See its JSON artifact.');
+  const number = new Intl.NumberFormat('en-US');
+  byId('shadow-benchmark-claims').textContent = number.format(report.replayedClaims);
+  byId('shadow-benchmark-flips').textContent = `${number.format(report.flipCount)} / ${number.format(report.expectedFlips)}`;
+  byId('shadow-benchmark-detection').textContent = report.detectionPercent === null ? 'No expected flips' : `${report.detectionPercent.toFixed(4)}%`;
+  byId('shadow-benchmark-runtime').textContent = `${report.wallSeconds.toFixed(3)} s`;
+  byId('shadow-benchmark-status').textContent = `Recorded ${new Date(report.completedAtUtc).toISOString()} · local ${report.environment.architecture} · ${report.environment.buildConfiguration}.`;
+  byId('shadow-benchmark-detail').textContent = `${number.format(report.v1.rejected)} baseline rejections; ${number.format(report.falsePositive)} false positives; ${number.format(report.falseNegative)} missed flips. Evaluation plus oracle: ${report.evaluationAndOracleSeconds.toFixed(3)} s. Wall time includes SQLite reads and observation/audit persistence. This is a recorded local measurement; it does not measure Azure API capacity or change live rules.`;
+}
+loadRecordedShadowBenchmark().catch(error => byId('shadow-benchmark-status').textContent = error.message);

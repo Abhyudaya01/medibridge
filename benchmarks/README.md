@@ -70,3 +70,21 @@ The parity console generates 200 pairs (160 accepted and 40 shared semantic-inva
 Run `dotnet run --project benchmarks/sla -c Release` for 10,000 requests over 30 simulated arrival days and follow-up until all scheduled decisions finish. The harness advances an injected `IClock` and exercises the production lifecycle processor with SQLite audit persistence. It writes `results/sla.json` and an actual summary row in `RESULTS.md`; no Azure scaling is required.
 
 See [distribution assumptions, measurement definitions, deadline boundaries and the independent oracle](../docs/prior-auth-decisions.md#accelerated-simulation). Reports include missed deadlines, at-risk and breach events, escalation lead time, priority breakdown, and the unresolved day-30 backlog. These distributions are synthetic assumptions; this is a correctness simulation, not an observed healthcare population or throughput benchmark.
+
+## Seeded corpus and shadow replay (chunk 3b)
+
+[Generator assumptions and storage](generator/README.md) and
+[shadow oracle and measurement definitions](shadow/README.md) document the local
+250,000-claim experiment. From the repository root:
+
+```sh
+dotnet run --project benchmarks/generator -c Release
+dotnet run --project benchmarks/shadow -c Release
+```
+
+Use a fresh `--database` path for regeneration; the loader never overwrites a file.
+Measured artifacts are `results/generator.json` and `results/shadow.json`, with ledger
+rows in [RESULTS.md](RESULTS.md). The ignored database holds the full corpus, both
+rule definitions, per-claim expected/actual verdicts and append-only audits. The
+benchmark uses an isolated SQLite schema and the production Core evaluator. It
+never sends traffic to Azure and does not measure production API capacity.
