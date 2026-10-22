@@ -64,3 +64,9 @@ The parity console generates 200 pairs (160 accepted and 40 shared semantic-inva
 ## Automated checks
 
 `dotnet test` covers aggregate math, null denominators, deterministic failure draws, real child-process crashes, full drain, replay suppression, and JSON/ledger creation. `python3 -m unittest discover -s benchmarks/load -p 'test_*.py'` checks extraction, invalid metrics, append-only ledger rows, subscription guards, and F1 restoration after a simulated load failure. CI runs these short checks, not the 1,000-iteration benchmark or live load.
+
+## SLA backlog simulation
+
+Run `dotnet run --project benchmarks/sla -c Release` for 10,000 requests over 30 simulated arrival days and follow-up until all scheduled decisions finish. The harness advances an injected `IClock` and exercises the production lifecycle processor with SQLite audit persistence. It writes `results/sla.json` and an actual summary row in `RESULTS.md`; no Azure scaling is required.
+
+See [distribution assumptions, measurement definitions, deadline boundaries and the independent oracle](../docs/prior-auth-decisions.md#accelerated-simulation). Reports include missed deadlines, at-risk and breach events, escalation lead time, priority breakdown, and the unresolved day-30 backlog. These distributions are synthetic assumptions; this is a correctness simulation, not an observed healthcare population or throughput benchmark.

@@ -301,6 +301,9 @@ namespace MediBridge.Infrastructure.Migrations.Sqlite
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("StateJson")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset>("Timestamp")
                         .HasColumnType("TEXT");
 
@@ -322,6 +325,12 @@ namespace MediBridge.Infrastructure.Migrations.Sqlite
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("LifecycleJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("NextSlaCheckTicks")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Outcome")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -336,7 +345,13 @@ namespace MediBridge.Infrastructure.Migrations.Sqlite
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("Outcome", "NextSlaCheckTicks");
 
                     b.ToTable("PriorAuthRequests");
                 });

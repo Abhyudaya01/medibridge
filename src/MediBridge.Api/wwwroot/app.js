@@ -167,8 +167,10 @@ function showPa(data, status) {
   byId('pa-status').textContent = `${data.outcome || 'Request'} · HTTP ${status}`;
   if (data.request) {
     byId('pa-lookup-id').value = data.request.id;
+    byId('pa-decision-id').value = data.request.id;
     result.append(element('h3', 'Canonical request'), element('pre', JSON.stringify(data.request, null, 2)));
   }
+  if (data.lifecycle) result.append(element('h3', 'Decision clock'), element('pre', JSON.stringify(data.lifecycle, null, 2)));
   if (data.errors?.length) {
     const list = element('ul');
     data.errors.forEach(error => list.append(element('li', `${error.ruleId} · ${error.path || error.field}${error.segmentId ? ` · ${error.segmentId} segment ${error.segmentPosition}, element ${error.elementPosition}` : ''}: ${error.reason}`)));
@@ -181,7 +183,7 @@ function showPa(data, status) {
       const item = element('li');
       item.append(element('strong', `${event.stage} · ${event.outcome}`), element('time', event.timestamp), element('p', event.detail)); list.append(item);
     });
-    result.append(element('h3', 'Intake timeline'), list);
+    result.append(element('h3', 'Audit timeline'), list);
   }
 }
 byId('pa-sample').addEventListener('click', () => loadPaSample().catch(error => byId('pa-status').textContent = error.message));
@@ -193,6 +195,7 @@ byId('pa-form').addEventListener('submit', async event => {
     if (new TextEncoder().encode(payload).length > 65536) throw new Error('Input exceeds 64 KiB.');
     const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': format === 'fhir' ? 'application/fhir+json' : 'text/plain; charset=utf-8', 'Idempotency-Key': requestKey(path, payload) }, body: payload });
     const body = await response.text(); showPa(body ? JSON.parse(body) : { detail: 'Check content type, encoding, and size.' }, response.status);
+    await loadSla();
   } catch (error) { byId('pa-status').textContent = `PA intake failed: ${error.message}`; }
   finally { button.disabled = false; }
 });
@@ -205,3 +208,64 @@ byId('pa-lookup-form').addEventListener('submit', async event => {
   } catch (error) { byId('pa-status').textContent = error.message; }
 });
 loadPaSample().catch(error => byId('pa-status').textContent = error.message);
+
+let slaNext = null;
+const formatHours = value => value == null ? '—' : Number(value).toFixed(2);
+async function loadSla(more = false) {
+  const response = await fetch('/api/pa?limit=100' + (more && slaNext ? '&after=' + encodeURIComponent(slaNext) : ''));
+  if (!response.ok) throw new Error(`SLA board returned HTTP ${response.status}.`);
+  const board = await response.json();
+  byId('sla-ontrack').textContent = board.counts.onTrack;
+  byId('sla-risk').textContent = board.counts.atRisk;
+  byId('sla-breached').textContent = board.counts.breached;
+  if (!more) byId('sla-rows').replaceChildren();
+  for (const item of board.requests) {
+    const state = item.lifecycle; const row = element('tr'); const identity = element('td');
+    const button = element('button', item.id, 'claim-link'); button.type = 'button';
+    button.addEventListener('click', async () => {
+      byId('pa-decision-id').value = item.id; byId('pa-lookup-id').value = item.id;
+      try {
+        const detail = await fetch('/api/pa/' + encodeURIComponent(item.id));
+        if (!detail.ok) throw new Error(`Request returned HTTP ${detail.status}.`);
+        showPa(await detail.json(), detail.status); byId('pa-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (error) { byId('sla-status').textContent = error.message; }
+    });
+    identity.append(button); const status = element('td'); status.append(element('span', state.sla, 'badge ' + state.sla));
+    const dates = element('td', new Date(state.receivedAt).toISOString()); dates.append(element('small', 'Due ' + new Date(state.dueAt).toISOString()));
+    row.append(identity, element('td', `${state.priority} / ${state.decision}`), status, dates); byId('sla-rows').append(row);
+  }
+  slaNext = board.next; byId('sla-more').hidden = !slaNext;
+  byId('sla-status').textContent = `Active requests only · As of ${new Date(board.asOf).toISOString()} · SLA scans every 30 seconds.`;
+  const metricsResponse = await fetch('/api/reports/prior-auth-metrics');
+  if (!metricsResponse.ok) throw new Error(`Metrics returned HTTP ${metricsResponse.status}.`);
+  const report = await metricsResponse.json();
+  byId('pa-metrics-rows').replaceChildren(...report.metrics.map(metric => {
+    const row = element('tr');
+    for (const value of [metric.priority, `${metric.received} / ${metric.finalized}`, metric.approvalRate == null ? '—' : (metric.approvalRate * 100).toFixed(1) + '%', metric.denialRate == null ? '—' : (metric.denialRate * 100).toFixed(1) + '%', formatHours(metric.meanTurnaroundHours), formatHours(metric.medianTurnaroundHours)]) row.append(element('td', value));
+    return row;
+  }));
+  byId('pa-metrics-asof').textContent = `As of ${new Date(report.asOf).toISOString()} · ${report.source}`;
+}
+function refreshSla() { return loadSla().catch(error => byId('sla-status').textContent = error.message); }
+byId('sla-refresh').addEventListener('click', refreshSla);
+byId('sla-more').addEventListener('click', () => loadSla(true).catch(error => byId('sla-status').textContent = error.message));
+byId('pa-decision').addEventListener('change', () => {
+  const denied = byId('pa-decision').value === 'Denied';
+  byId('pa-denial-reason').disabled = !denied; byId('pa-denial-reason').required = denied;
+});
+byId('pa-decision-form').addEventListener('submit', async event => {
+  event.preventDefault(); const button = byId('pa-decision-submit'); button.disabled = true;
+  try {
+    const id = byId('pa-decision-id').value.trim(); const decision = byId('pa-decision').value;
+    const payload = JSON.stringify({ decision, reasonCode: decision === 'Denied' ? byId('pa-denial-reason').value : null });
+    const path = '/api/pa/' + encodeURIComponent(id) + '/decisions';
+    const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': requestKey(path, payload) }, body: payload });
+    const data = await response.json();
+    byId('pa-decision-status').textContent = response.ok ? `${id}: ${decision} recorded.` : `HTTP ${response.status}: ${data.error?.reason || data.detail || 'Decision rejected.'}`;
+    if (response.ok) showPa(data, response.status);
+    await loadSla();
+  } catch (error) { byId('pa-decision-status').textContent = error.message; }
+  finally { button.disabled = false; }
+});
+refreshSla();
+setInterval(refreshSla, 30000);

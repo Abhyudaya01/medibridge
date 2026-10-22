@@ -22,6 +22,8 @@ public class ClaimsDbContext(DbContextOptions options) : DbContext(options)
     {
         var pa = model.Entity<PriorAuthRecord>(); pa.HasKey(r => r.Id); pa.Property(r => r.Id).HasMaxLength(64).UseCollation(Database.IsSqlServer() ? "Latin1_General_100_BIN2" : "BINARY");
         pa.Property(r => r.Outcome).HasMaxLength(32); pa.Property(r => r.SourceFormat).HasMaxLength(32);
+        pa.Property(r => r.Version).IsConcurrencyToken();
+        pa.HasIndex(r => new { r.Outcome, r.NextSlaCheckTicks });
         var paEvent = model.Entity<PriorAuthEvent>(); paEvent.HasKey(e => e.Id); paEvent.Property(e => e.RequestId).HasMaxLength(64).UseCollation(Database.IsSqlServer() ? "Latin1_General_100_BIN2" : "BINARY");
         paEvent.Property(e => e.Stage).HasMaxLength(64); paEvent.Property(e => e.Outcome).HasMaxLength(64);
         paEvent.HasIndex(e => new { e.RequestId, e.Id });
@@ -99,6 +101,7 @@ public class ClaimsDbContext(DbContextOptions options) : DbContext(options)
             throw new InvalidOperationException("Audit is append-only.");
         foreach (var entry in ChangeTracker.Entries().Where(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted).ToArray())
         {
+            if (entry.Entity is PriorAuthRecord paRecord && entry.State == EntityState.Modified) paRecord.Version = (long)entry.Property("Version").OriginalValue! + 1;
             if (entry.Entity is OutboxMessage message && entry.State == EntityState.Modified) message.Version = (long)entry.Property("Version").OriginalValue! + 1;
             if (entry.Entity is HandlerReceipt or IdempotencyRecord && entry.State == EntityState.Modified)
                 throw new InvalidOperationException("Committed responses and handler receipts are immutable.");

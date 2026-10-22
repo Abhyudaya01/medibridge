@@ -75,3 +75,10 @@ textarea { width: 100%; display: block; margin-top: 8px; padding: 12px; border: 
 
 #pa-form, #pa-lookup-form { display: grid; gap: 1rem; margin-top: 1rem; }
 #pa-result pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.sla-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.badge.OnTrack, .badge.Approved { background: #e0efed; color: #185a4f; }
+.badge.AtRisk, .badge.Pended { background: #fff0cf; color: #74521a; }
+.badge.Breached, .badge.Denied { background: #fde9e6; color: #8c3027; }
+#sla-more { margin-top: 12px; }
+#pa-decision-form { align-items: end; }

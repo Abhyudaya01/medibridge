@@ -316,6 +316,9 @@ namespace MediBridge.Infrastructure.Migrations.SqlServer
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
+                    b.Property<string>("StateJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTimeOffset>("Timestamp")
                         .HasColumnType("datetimeoffset");
 
@@ -339,6 +342,12 @@ namespace MediBridge.Infrastructure.Migrations.SqlServer
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("LifecycleJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<long?>("NextSlaCheckTicks")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("Outcome")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -353,7 +362,13 @@ namespace MediBridge.Infrastructure.Migrations.SqlServer
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("Outcome", "NextSlaCheckTicks");
 
                     b.ToTable("PriorAuthRequests");
                 });

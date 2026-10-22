@@ -12,6 +12,9 @@ public sealed class PriorAuthRecord
     public string Outcome { get; set; } = "";
     public string SourceFormat { get; set; } = "";
     public string ValidationJson { get; set; } = "";
+    public string? LifecycleJson { get; set; }
+    public long? NextSlaCheckTicks { get; set; }
+    public long Version { get; set; }
 }
 public sealed class PriorAuthEvent
 {
@@ -21,8 +24,9 @@ public sealed class PriorAuthEvent
     public string Stage { get; set; } = "";
     public string Outcome { get; set; } = "";
     public string Detail { get; set; } = "";
+    public string? StateJson { get; set; }
 }
-public sealed record PriorAuthResponse(PriorAuthRequest Request, string Outcome, IReadOnlyList<PriorAuthError> Errors, IReadOnlyList<PriorAuthEvent> Timeline);
+public sealed record PriorAuthResponse(PriorAuthRequest Request, string Outcome, IReadOnlyList<PriorAuthError> Errors, IReadOnlyList<PriorAuthEvent> Timeline, PriorAuthLifecycle? Lifecycle = null);
 public static class PriorAuthJson
 {
     public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
@@ -36,6 +40,8 @@ public sealed class PriorAuthStore(ClaimsDbContext db)
         if (await db.PriorAuthRequests.AnyAsync(r => r.Id == canonical.Id, ct)) return null;
         var record = new PriorAuthRecord { Id = canonical.Id, CanonicalJson = JsonSerializer.Serialize(canonical, PriorAuthJson.Options),
             Outcome = mapping.Outcome, SourceFormat = format, ValidationJson = JsonSerializer.Serialize(mapping.Errors, PriorAuthJson.Options) };
+        var lifecycle = mapping.Outcome == "Accepted" ? new PriorAuthLifecycle(canonical.Priority!.Value, receivedAt.ToUniversalTime()) : null;
+        if (lifecycle is not null) PriorAuthLifecycleStore.Set(record, lifecycle);
         db.PriorAuthRequests.Add(record);
         var timeline = new[]
         {
@@ -43,9 +49,10 @@ public sealed class PriorAuthStore(ClaimsDbContext db)
             Event("Mapping", "Mapped", "Mapped to the canonical prior-authorization model; source submission time normalized to UTC."),
             Event("Validation", mapping.Outcome, mapping.Outcome == "Accepted" ? "Intake accepted. No authorization or coverage decision has been made." : "Intake rejected by shared canonical validation; correct the reported fields.")
         };
+        if (lifecycle is not null) timeline[^1].StateJson = PriorAuthLifecycleStore.Json(lifecycle);
         db.PriorAuthEvents.AddRange(timeline);
         await db.SaveChangesAsync(ct);
-        return new(canonical, record.Outcome, mapping.Errors, timeline);
+        return new(canonical, record.Outcome, mapping.Errors, timeline, lifecycle);
         PriorAuthEvent Event(string stage, string outcome, string detail) => new() { RequestId = canonical.Id, Timestamp = receivedAt.ToUniversalTime(), Stage = stage, Outcome = outcome, Detail = detail };
     }
     public async Task<PriorAuthResponse?> GetAsync(string id, CancellationToken ct = default)
@@ -54,6 +61,6 @@ public sealed class PriorAuthStore(ClaimsDbContext db)
         if (record is null) return null;
         return new(JsonSerializer.Deserialize<PriorAuthRequest>(record.CanonicalJson, PriorAuthJson.Options)!, record.Outcome,
             JsonSerializer.Deserialize<List<PriorAuthError>>(record.ValidationJson, PriorAuthJson.Options)!,
-            await db.PriorAuthEvents.AsNoTracking().Where(e => e.RequestId == id).OrderBy(e => e.Id).ToListAsync(ct));
+            await db.PriorAuthEvents.AsNoTracking().Where(e => e.RequestId == id).OrderBy(e => e.Id).ToListAsync(ct), PriorAuthLifecycleStore.Read(record));
     }
 }
