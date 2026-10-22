@@ -9,7 +9,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: medibridge-${{ github.ref }}
+  # Separate PR revisions so a stale run cannot hold up newer validation.
+  # Main keeps its branch group so deployments remain serialized.
+  group: medibridge-${{ github.event_name == 'pull_request' && github.sha || github.ref }}
   cancel-in-progress: false
 
 jobs:

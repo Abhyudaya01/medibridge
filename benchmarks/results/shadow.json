@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "runId": "014726f4b090424baf980506afb262ac",
+  "status": "completed",
+  "startedAtUtc": "2026-10-22T14:02:39.025577+00:00",
+  "completedAtUtc": "2026-10-22T14:02:42.389087+00:00",
+  "source": {
+    "baseCommit": "e05abc856211dae9c88a58623d8d1e139903eb6d",
+    "contentSha256": "8173EDFACD9BAD4FC75BE2C28A6C8785EF0E37E4A4CB5310365EFC120499412D",
+    "scope": "Directory.Build.props, Core, generator and shadow sources including rule JSON; excludes bin/obj and result artifacts",
+    "scopedWorkingTree": "modified"
+  },
+  "environment": {
+    "runtime": ".NET 10.0.13",
+    "os": "macOS 27.0.1",
+    "architecture": "Arm64",
+    "processors": 10,
+    "sqlite": "10.0.13.0",
+    "buildConfiguration": "Release"
+  },
+  "generatorRunId": "5d34bbaf8fbc492d9813576e65e0cbc8",
+  "seed": 837250000,
+  "expectedCount": 250000,
+  "replayedClaims": 250000,
+  "persistedObservations": 250000,
+  "corpusSha256": "8E26D123ADE4BD5CAA959E6735B9C8A3DB0E5D21C59B03C4B2DA15DF4AC3E71F",
+  "corpusHashMatches": true,
+  "labelMismatches": 0,
+  "v1": {
+    "version": "phase0-v1",
+    "sha256": "7591DD30C78FD171245097E5591B0E6D180A54B2C388C30A5C3E8578203C70B3",
+    "accepted": 230000,
+    "rejected": 20000,
+    "oracleMatches": 250000
+  },
+  "v2": {
+    "version": "benchmark-v2",
+    "sha256": "4A26DCCF6FDF91160B0492E4D5DD591FEB613836CC0D34DD3AF0FA701D855441",
+    "accepted": 185188,
+    "rejected": 64812,
+    "oracleMatches": 250000
+  },
+  "knownChange": "Add BENCH_PLUS_AMOUNT: reject SYN-PLUS amounts \u003E100.00; all baseline rules unchanged. Previously invalid claims remain rejected.",
+  "groundTruth": "Independent fixed-contract validator and direct SYN-PLUS/amount predicate on each input; generated validity labels cross-checked. No evaluator calls in oracle.",
+  "expectedFlips": 44812,
+  "flipCount": 44812,
+  "detectionPercent": 100,
+  "precisionPercent": 100,
+  "truePositive": 44812,
+  "falsePositive": 0,
+  "falseNegative": 0,
+  "trueNegative": 205188,
+  "acceptedToRejected": 44812,
+  "rejectedToAccepted": 0,
+  "byPlan": {
+    "SYN-BASIC": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 0,
+      "trueNegative": 162593,
+      "expectedFlips": 0,
+      "detectedFlips": 0,
+      "detectionPercent": null,
+      "precisionPercent": null
+    },
+    "SYN-PLUS": {
+      "truePositive": 44812,
+      "falsePositive": 0,
+      "falseNegative": 0,
+      "trueNegative": 30021,
+      "expectedFlips": 44812,
+      "detectedFlips": 44812,
+      "detectionPercent": 100,
+      "precisionPercent": 100
+    },
+    "Unspecified": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 0,
+      "trueNegative": 12574,
+      "expectedFlips": 0,
+      "detectedFlips": 0,
+      "detectionPercent": null,
+      "precisionPercent": null
+    }
+  },
+  "mismatches": [],
+  "readSeconds": 0.2183919,
+  "evaluationAndOracleSeconds": 1.2279175,
+  "persistSeconds": 1.7809679,
+  "wallSeconds": 3.4761071,
+  "measurement": "Local single-threaded replay of pinned Core rule definitions; \u003C=1000-row batches; parsing, independent oracle and hashing included in evaluation phase. Wall time includes reads and atomic observation/audit persistence. Not API, Azure or outbox throughput."
+}

@@ -1,4 +1,4 @@
-# MediBridge · v0.8.0
+# MediBridge · v0.9.0
 
 Healthcare Claims & Prior Authorization Exception and Recovery Engine. Portfolio simulation on **synthetic data only**. **Not affiliated with any payer.** Never use real PHI, real member IDs, or real payer names or branding. All downstream processing is simulated locally; no healthcare services are called.
 
@@ -131,7 +131,7 @@ dotnet test
 dotnet run --project src/MediBridge.Api --no-launch-profile --urls http://localhost:5080
 ```
 
-Open [the demo](http://localhost:5080/), [Swagger](http://localhost:5080/swagger), or [health](http://localhost:5080/health). Health returns `{"status":"ok","version":"0.8.0"}` and is a process liveness endpoint. Startup initializes storage and seeds the four scenarios before serving requests.
+Open [the demo](http://localhost:5080/), [Swagger](http://localhost:5080/swagger), or [health](http://localhost:5080/health). Health returns `{"status":"ok","version":"0.9.0"}` and is a process liveness endpoint. Startup initializes storage and seeds the four scenarios before serving requests.
 
 SQLite defaults to `src/MediBridge.Api/Data/medibridge.db` locally and `/home/data/medibridge.db` on Linux App Service. Override its path with `Database__Path` (configuration key `Database:Path`). Parent directories are created automatically. The database is outside the deployed application directory on Azure and persists across zip deployments when App Service storage is enabled.
 
@@ -143,7 +143,7 @@ Startup now applies provider-specific EF migrations. Known legacy EnsureCreated 
 
 | Method | Path | Behavior |
 |---|---|---|
-| GET | `/health` | 200 with status and version 0.8.0 |
+| GET | `/health` | 200 with status and version 0.9.0 |
 | GET | `/api/claims` | Ordered array of claims and current classification/validation failures |
 | GET | `/api/claims/{id}` | Claim, ordered full timeline, and validation failures; 404 if absent |
 | POST | `/api/claims` | Validate and atomically persist a claim with its timeline |
@@ -187,6 +187,8 @@ rm -f "$profile_path"
 trap - EXIT
 ```
 
+PR revisions use separate concurrency groups so newer validation can proceed independently; deployments on main remain serialized.
+
 Watch a deployment with `gh run list --workflow deploy.yml`, then `gh run watch <run-id> --exit-status`. Verify the running version with `curl --fail https://medibridge-abhi.azurewebsites.net/health`.
 
 ## Roadmap
@@ -196,11 +198,12 @@ Watch a deployment with `gh run list --workflow deploy.yml`, then `gh run watch 
 - **Chunk 1b (implemented):** durable idempotency, outbox/receipts, bounded retries, correction queue, fault injection, dual-provider migrations, and free-offer Azure SQL.
 - **Chunk 1c (implemented):** measured chaos/recovery and HTTP load harnesses; results include test environment and limitations.
 - **Phase 1 (next):** richer exception and recovery workflows on the validation/audit/intake foundation.
+- **Chunk 3b (implemented):** reproducible 250,000-claim SQLite corpus, independently checked local shadow replay, measured artifacts and a recorded benchmark view.
 - **Chunk 3a (implemented):** DB-backed effective-dated JSON validation, isolated shadow comparisons, audited promotion, and rule-change impact view.
 - **Chunk 2b (implemented):** Receipt-based SLA clocks, structured review decisions, audit-derived metrics, SLA board, and measured 10,000-request accelerated backlog simulation.
 - **Chunk 2a (implemented):** X12 278 / FHIR R4 prior-authorization intake, canonical mapping, audit timelines, paired samples, and measured parity.
 - **Phase 2 (next):** expanded synthetic authorization review, versioned rules, and decision workflows.
-- **Phase 3:** expand scale, workload generators, and measured benchmark coverage. Every harness run must produce `benchmarks/results/*.json` and a row in `benchmarks/RESULTS.md`; never hardcode or fabricate results.
+- **Phase 3:** versioned rule evaluation and shadow impact, plus a seeded 250,000-claim local SQLite corpus and independently checked shadow replay. Every harness run must produce `benchmarks/results/*.json` and a row in `benchmarks/RESULTS.md`; never hardcode or fabricate results.
 
 ### Prior authorization review and reports
 
@@ -227,3 +230,28 @@ curl http://localhost:5080/api/rules/candidate-v2/shadow-diff
 ```
 
 Use the demo's **Submit synthetic impact sample** button to record real comparison observations. Omit `ruleVersion` on JSON claims to resolve the active version at receipt; an explicit mismatched version still requires manual review. Effective dates use receipt time, and previous transactions remain pinned to their saved evaluations.
+
+
+## Local synthetic corpus and shadow replay
+
+Chunk 3b adds [a seeded generator](benchmarks/generator/README.md) and
+[a local shadow replay harness](benchmarks/shadow/README.md). The generator bulk-loads
+250,000 fabricated claims into an ignored SQLite database with documented weighted
+provider, procedure, plan and amount distributions and exactly 8% invalid inputs.
+The replay uses the production Core evaluator for `phase0-v1` and a separate
+`benchmark-v2` with a known SYN-PLUS amount limit. It checks each pair of verdicts
+against an independent oracle, including invalid claims that stay rejected.
+
+```sh
+dotnet run --project benchmarks/generator -c Release
+dotnet run --project benchmarks/shadow -c Release
+```
+
+Both commands run locally and write measured JSON plus rows in
+[the results ledger](benchmarks/RESULTS.md). The database is isolated from application
+storage; the experiment does not call Azure, promote a rule, or measure API capacity.
+Choose a fresh `--database path.db` when generating another corpus. The replay can
+append multiple runs to an existing corpus. [Measurement details](benchmarks/shadow/README.md)
+explain flip detection, false positives/negatives, source hashes and runtime scope.
+The demo reads the committed shadow JSON at `/benchmarks/shadow.json`; publishing
+includes that exact artifact, so displayed numbers are never embedded constants.
