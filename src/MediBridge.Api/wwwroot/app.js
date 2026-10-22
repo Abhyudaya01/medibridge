@@ -164,7 +164,7 @@ async function loadPaSample() {
 }
 function showPa(data, status) {
   const result = byId('pa-result'); result.replaceChildren();
-  byId('pa-status').textContent = `${data.outcome || 'Request'} · HTTP ${status}`;
+  byId('pa-status').textContent = `${data.outcome ? 'Intake ' + data.outcome : 'Request'}${data.lifecycle ? ' · Review ' + data.lifecycle.decision : ''} · HTTP ${status}`;
   if (data.request) {
     byId('pa-lookup-id').value = data.request.id;
     byId('pa-decision-id').value = data.request.id;
@@ -261,6 +261,7 @@ byId('pa-decision-form').addEventListener('submit', async event => {
     const path = '/api/pa/' + encodeURIComponent(id) + '/decisions';
     const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': requestKey(path, payload) }, body: payload });
     const data = await response.json();
+    if (response.status < 500) requestKeys.delete(path + '\n' + payload);
     byId('pa-decision-status').textContent = response.ok ? `${id}: ${decision} recorded.` : `HTTP ${response.status}: ${data.error?.reason || data.detail || 'Decision rejected.'}`;
     if (response.ok) showPa(data, response.status);
     await loadSla();
