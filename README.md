@@ -187,6 +187,8 @@ rm -f "$profile_path"
 trap - EXIT
 ```
 
+PR revisions use separate concurrency groups so newer validation can proceed independently; deployments on main remain serialized.
+
 Watch a deployment with `gh run list --workflow deploy.yml`, then `gh run watch <run-id> --exit-status`. Verify the running version with `curl --fail https://medibridge-abhi.azurewebsites.net/health`.
 
 ## Roadmap
