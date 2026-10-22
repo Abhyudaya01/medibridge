@@ -95,3 +95,9 @@ textarea { width: 100%; display: block; margin-top: 8px; padding: 12px; border: 
 .benchmark-summary strong { font-size: 1.35rem; overflow-wrap: anywhere; }
 @media (max-width: 1000px) { .benchmark-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 420px) { .benchmark-summary { grid-template-columns: 1fr; } }
+
+.control-chart { position: relative; height: 340px; margin: 20px 0; }
+.monitoring-table { max-height: 390px; }
+.monitoring-table caption { text-align: left; padding: 10px 0; color: #526773; }
+.monitoring-table .alert-row { background: #fff0ec; }
+#monitor-detail { overflow-wrap: anywhere; }

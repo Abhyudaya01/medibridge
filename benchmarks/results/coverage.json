@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "status": "completed",
+  "runId": "20261022T165144Z",
+  "completedAtUtc": "2026-10-22T16:51:44.520455+00:00",
+  "assembly": "MediBridge.Core",
+  "coveredLines": 673,
+  "totalLines": 685,
+  "lineCoveragePercent": 98.24817518248175,
+  "files": [
+    {
+      "path": "src/MediBridge.Core/Claim.cs",
+      "coveredLines": 21,
+      "totalLines": 21
+    },
+    {
+      "path": "src/MediBridge.Core/ClaimProcessor.cs",
+      "coveredLines": 31,
+      "totalLines": 31
+    },
+    {
+      "path": "src/MediBridge.Core/ClaimRules.cs",
+      "coveredLines": 14,
+      "totalLines": 14
+    },
+    {
+      "path": "src/MediBridge.Core/FailurePolicy.cs",
+      "coveredLines": 12,
+      "totalLines": 13
+    },
+    {
+      "path": "src/MediBridge.Core/Monitoring/PCharts.cs",
+      "coveredLines": 43,
+      "totalLines": 43
+    },
+    {
+      "path": "src/MediBridge.Core/PriorAuth/PriorAuthLifecycle.cs",
+      "coveredLines": 46,
+      "totalLines": 47
+    },
+    {
+      "path": "src/MediBridge.Core/PriorAuth/PriorAuthRequest.cs",
+      "coveredLines": 21,
+      "totalLines": 21
+    },
+    {
+      "path": "src/MediBridge.Core/PriorAuth/X12278Mapper.cs",
+      "coveredLines": 58,
+      "totalLines": 58
+    },
+    {
+      "path": "src/MediBridge.Core/Rules/RuleEngine.cs",
+      "coveredLines": 111,
+      "totalLines": 112
+    },
+    {
+      "path": "src/MediBridge.Core/X12/X12Acknowledgments.cs",
+      "coveredLines": 36,
+      "totalLines": 36
+    },
+    {
+      "path": "src/MediBridge.Core/X12/X12Parser.cs",
+      "coveredLines": 206,
+      "totalLines": 212
+    },
+    {
+      "path": "src/MediBridge.Core/X12/X12Tokenizer.cs",
+      "coveredLines": 58,
+      "totalLines": 61
+    },
+    {
+      "path": "src/MediBridge.Core/X12/X12Types.cs",
+      "coveredLines": 16,
+      "totalLines": 16
+    }
+  ],
+  "inputSha256": "1f9286ddc545b1ea9c3517c9c515734615a1fb9dd9196c76dc165833d249227d",
+  "sourceBaseCommit": "c24d3d2886adecdc952c64bb36d66dcc2416c17e",
+  "sourceContentSha256": "649a025b9f19c1e6917297459f4eb6c9bc65181774ab467483c524a43d1bc6b8",
+  "sourceScope": "Directory.Build.props, coverage.runsettings, src/tests/benchmark code and JSON; excludes obj/bin/work/results",
+  "measurement": "Coverlet collector 6.0.4; Core assembly only; generated obj files excluded. Physical executable source lines. External crash-child processes are not included by this in-process collector."
+}

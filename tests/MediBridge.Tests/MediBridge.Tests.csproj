@@ -25,6 +25,7 @@
     <ProjectReference Include="..\..\benchmarks\sla\MediBridge.Sla.csproj" />
     <ProjectReference Include="..\..\benchmarks\parity\MediBridge.Parity.csproj" />
     <ProjectReference Include="../../benchmarks/shadow/MediBridge.Shadow.csproj" />
+    <ProjectReference Include="../../benchmarks/drift/MediBridge.Drift.csproj" />
   </ItemGroup>
 
   <ItemGroup>

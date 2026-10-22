@@ -23,6 +23,6 @@ public class HealthTests : IClassFixture<ClaimsApiFactory>
         Assert.NotNull(payload);
         Assert.Equal(2, payload.Count);
         Assert.Equal("ok", payload["status"]);
-        Assert.Equal("0.9.0", payload["version"]);
+        Assert.Equal("0.10.0", payload["version"]);
     }
 }

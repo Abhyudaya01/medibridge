@@ -88,3 +88,12 @@ rows in [RESULTS.md](RESULTS.md). The ignored database holds the full corpus, bo
 rule definitions, per-claim expected/actual verdicts and append-only audits. The
 benchmark uses an isolated SQLite schema and the production Core evaluator. It
 never sends traffic to Azure and does not measure production API capacity.
+
+## Drift monitoring and Core coverage (chunk 3c)
+
+[Drift](drift/README.md) executes seeded 5%→10% failure-rate changes and stationary
+controls through the production p-chart calculator. It reports observed alert
+latency, misses and false alerts in `results/drift.json`. [Core coverage](coverage/README.md)
+collects Coverlet Cobertura output and validates actual executable-line counts in
+`results/coverage.json`. Both append measured rows to [RESULTS.md](RESULTS.md).
+They run locally; no Azure scaling or load is involved.

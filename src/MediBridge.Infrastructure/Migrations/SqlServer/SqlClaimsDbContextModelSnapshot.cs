@@ -252,6 +252,46 @@ namespace MediBridge.Infrastructure.Migrations.SqlServer
                     b.ToTable("Idempotency");
                 });
 
+            modelBuilder.Entity("MediBridge.Infrastructure.Monitoring.EndpointObservation", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<bool>("Aborted")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("CompletedAtTicks")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("Exception")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<bool>("Replayed")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Route")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<int>("StatusCode")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompletedAtTicks", "Method", "Route");
+
+                    b.ToTable("EndpointObservations", (string)null);
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
             modelBuilder.Entity("MediBridge.Infrastructure.OutboxMessage", b =>
                 {
                     b.Property<string>("Id")
@@ -513,6 +553,8 @@ namespace MediBridge.Infrastructure.Migrations.SqlServer
                     b.HasKey("Id");
 
                     b.HasIndex("CandidateVersion", "ReceivedAtTicks");
+
+                    b.HasIndex("ReceivedAtTicks", "Id");
 
                     b.ToTable("RuleEvaluations", (string)null);
 

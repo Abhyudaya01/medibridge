@@ -41,7 +41,13 @@ public class SqlIntegrationTests
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ClaimsDbContext>();
-            Assert.True(db.Database.IsSqlServer()); Assert.Equal(5, (await db.Database.GetAppliedMigrationsAsync()).Count());
+            Assert.True(db.Database.IsSqlServer()); Assert.Equal(6, (await db.Database.GetAppliedMigrationsAsync()).Count());
+            Assert.Equal(2, await db.EndpointObservations.CountAsync(e => e.Route == "/api/claims" && e.Method == "POST"));
+            Assert.True(await db.EndpointObservations.AnyAsync(e => e.Replayed));
+            var monitoring = await new MediBridge.Infrastructure.Monitoring.MonitoringStore(db).GetAsync(factory.Clock.UtcNow.AddMinutes(5));
+            Assert.Equal(2, Assert.Single(monitoring.Series, s => s.Label == "POST /api/claims").Chart.Points[0].Observations);
+            Assert.Equal(1, Assert.Single(monitoring.Series, s => s.Label == "Claim / REQUIRED_PROVIDER_NPI").Chart.Points[0].Observations);
+            await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => db.Database.ExecuteSqlRawAsync("UPDATE EndpointObservations SET StatusCode=500"));
         }
         var dispatcher = factory.Services.GetRequiredService<OutboxDispatcher>();
         for (var i = 0; i < 8; i++) await Task.WhenAll(dispatcher.DispatchOneAsync(), dispatcher.DispatchOneAsync());

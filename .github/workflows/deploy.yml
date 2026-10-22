@@ -29,7 +29,21 @@ jobs:
       - name: Start isolated SQL Server for integration tests
         run: bash infra/ci-sql.sh
       - name: Test
-        run: dotnet test --no-build -c Release
+        run: dotnet test --no-build -c Release --collect:"XPlat Code Coverage" --settings coverage.runsettings --results-directory "${{ runner.temp }}/medibridge-core-coverage"
+      - name: Validate measured Core coverage
+        shell: bash
+        run: |
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          import os, subprocess
+          root = Path(os.environ['RUNNER_TEMP'])
+          reports = list((root / 'medibridge-core-coverage').rglob('coverage.cobertura.xml'))
+          if len(reports) != 1:
+              raise SystemExit('Expected one Core-only Coverlet report.')
+          subprocess.run(['python3', 'benchmarks/coverage/report.py', str(reports[0]), '--output', str(root / 'medibridge-coverage-summary/results/coverage.json')], check=True)
+          PYCODE
+      - name: Check coverage reporting
+        run: python3 -m unittest discover -s benchmarks/coverage -p 'test_*.py'
       - name: Check load summary reporting
         run: python3 -m unittest discover -s benchmarks/load -p 'test_*.py'
       - name: Publish

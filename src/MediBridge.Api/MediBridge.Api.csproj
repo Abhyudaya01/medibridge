@@ -18,6 +18,15 @@
              Condition="Exists('../../benchmarks/results/shadow.json')" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="../../benchmarks/results/drift.json" Link="wwwroot/benchmarks/drift.json"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"
+             Condition="Exists('../../benchmarks/results/drift.json')" />
+    <Content Include="../../benchmarks/results/coverage.json" Link="wwwroot/benchmarks/coverage.json"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"
+             Condition="Exists('../../benchmarks/results/coverage.json')" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
