@@ -6,4 +6,5 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup><EmbeddedResource Include="Rules/baseline.json" LogicalName="MediBridge.Rules.Baseline" /></ItemGroup>
 </Project>

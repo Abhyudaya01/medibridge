@@ -45,6 +45,13 @@ namespace MediBridge.Infrastructure.Migrations.Sqlite
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("PlanType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("Unspecified");
+
                     b.Property<string>("ProcedureCodes")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -356,6 +363,167 @@ namespace MediBridge.Infrastructure.Migrations.Sqlite
                     b.ToTable("PriorAuthRequests");
                 });
 
+            modelBuilder.Entity("MediBridge.Infrastructure.Rules.RuleActivation", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("ActivatedAtTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .UseCollation("BINARY");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Version");
+
+                    b.ToTable("RuleActivations");
+                });
+
+            modelBuilder.Entity("MediBridge.Infrastructure.Rules.RuleControl", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ShadowVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .UseCollation("BINARY");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ShadowVersion");
+
+                    b.ToTable("RuleControls");
+                });
+
+            modelBuilder.Entity("MediBridge.Infrastructure.Rules.RuleEvaluationRecord", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CandidateHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CandidateJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CandidateOutcome")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CandidateVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .UseCollation("BINARY");
+
+                    b.Property<string>("CodesJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Domain")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LiveHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LiveJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LiveOutcome")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LiveVersion")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .UseCollation("BINARY");
+
+                    b.Property<string>("PlanType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("ProtocolAccepted")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("ReceivedAtTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TransactionId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CandidateVersion", "ReceivedAtTicks");
+
+                    b.ToTable("RuleEvaluations");
+                });
+
+            modelBuilder.Entity("MediBridge.Infrastructure.Rules.RuleSetRecord", b =>
+                {
+                    b.Property<string>("Version")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .UseCollation("BINARY");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("CreatedAtTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DefinitionJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("EffectiveFromTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("EffectiveUntilTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Version");
+
+                    b.ToTable("RuleSets");
+                });
+
             modelBuilder.Entity("MediBridge.Core.ClaimEvent", b =>
                 {
                     b.HasOne("MediBridge.Core.Claim", null)
@@ -399,6 +567,23 @@ namespace MediBridge.Infrastructure.Migrations.Sqlite
                         .HasForeignKey("RequestId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("MediBridge.Infrastructure.Rules.RuleActivation", b =>
+                {
+                    b.HasOne("MediBridge.Infrastructure.Rules.RuleSetRecord", null)
+                        .WithMany()
+                        .HasForeignKey("Version")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MediBridge.Infrastructure.Rules.RuleControl", b =>
+                {
+                    b.HasOne("MediBridge.Infrastructure.Rules.RuleSetRecord", null)
+                        .WithMany()
+                        .HasForeignKey("ShadowVersion")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 #pragma warning restore 612, 618
         }

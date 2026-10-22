@@ -19,7 +19,7 @@ public static class FhirPriorAuthMapper
     public const string LevelExtension = "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/extension-levelOfServiceCode";
     public const string LevelSystem = "https://codesystem.x12.org/005010/1338";
 
-    public static PriorAuthMapping Map(string input)
+    public static PriorAuthMapping Map(string input, MediBridge.Core.Rules.RuleDefinition? definition = null, string planType = "Unspecified")
     {
         List<PriorAuthError> errors = [];
         if (System.Text.Encoding.UTF8.GetByteCount(input) > 65_536) return Fail("PA_FHIR_LIMIT", "Input", "Input exceeds 64 KiB.", "$");
@@ -80,7 +80,7 @@ public static class FhirPriorAuthMapper
                 && DateTimeOffset.TryParse(claim.Created, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)) submitted = parsed.ToUniversalTime();
             if (errors.Count > 0) return new(null, errors);
             var canonical = PriorAuthRules.Normalize(new(id, member, provider, codes, PriorAuthRules.LevelOfService(level), submitted));
-            errors.AddRange(PriorAuthRules.Validate(canonical).Select(e => e with { Path = e.Field switch
+            errors.AddRange(MediBridge.Core.Rules.RuleEvaluator.Evaluate(definition ?? MediBridge.Core.Rules.RuleCatalog.Baseline, MediBridge.Core.Rules.RuleInput.From(canonical, planType)).Failures.Select(f => new PriorAuthError(f.RuleId, f.Field, f.SuggestedFix)).Select(e => e with { Path = e.Field switch
             {
                 "Id" => "Claim.identifier", "MemberId" => "Claim.patient", "RequestingProviderNpi" => "Claim.provider", "ServiceCodes" => "Claim.item.productOrService",
                 "Priority" => "Claim.extension[levelOfServiceCode]", _ => "Claim.created"

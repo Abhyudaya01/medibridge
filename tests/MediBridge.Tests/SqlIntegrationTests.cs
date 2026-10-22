@@ -41,7 +41,7 @@ public class SqlIntegrationTests
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ClaimsDbContext>();
-            Assert.True(db.Database.IsSqlServer()); Assert.Equal(4, (await db.Database.GetAppliedMigrationsAsync()).Count());
+            Assert.True(db.Database.IsSqlServer()); Assert.Equal(5, (await db.Database.GetAppliedMigrationsAsync()).Count());
         }
         var dispatcher = factory.Services.GetRequiredService<OutboxDispatcher>();
         for (var i = 0; i < 8; i++) await Task.WhenAll(dispatcher.DispatchOneAsync(), dispatcher.DispatchOneAsync());
@@ -77,6 +77,25 @@ public class SqlIntegrationTests
         var metrics = await client.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/reports/prior-auth-metrics");
         Assert.Equal(1, metrics.GetProperty("metrics")[0].GetProperty("denied").GetInt32());
         Assert.Equal(240d, metrics.GetProperty("metrics")[0].GetProperty("meanTurnaroundHours").GetDouble());
+        var rules = await client.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/rules");
+        Assert.Equal("phase0-v1", rules.GetProperty("activeVersion").GetString());
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/rules/candidate-v2/shadow", new ShadowCommand(true, rules.GetProperty("revision").GetInt64()))).StatusCode);
+        client.DefaultRequestHeaders.Remove("Idempotency-Key"); client.DefaultRequestHeaders.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
+        var impact = new ClaimSubmission("CLM-SQL-IMPACT-" + Guid.NewGuid().ToString("N"), "0000000006", "SYN-SQL-IMPACT-" + Guid.NewGuid().ToString("N"), new(2026, 1, 20), ["SYN-IMPACT"], 150m, PlanType: "SYN-PLUS");
+        Assert.Equal(HttpStatusCode.Accepted, (await client.PostAsJsonAsync("/api/claims", impact)).StatusCode);
+        var comparison = await saved.RuleEvaluations.SingleAsync(e => e.TransactionId == impact.Id);
+        Assert.Equal("Accepted", comparison.LiveOutcome); Assert.Equal("Rejected", comparison.CandidateOutcome);
+        Assert.Equal(ClaimStatus.PendingProcessing, (await saved.Claims.SingleAsync(c => c.Id == impact.Id)).Status);
+        var diff = await client.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/rules/candidate-v2/shadow-diff"); Assert.Equal(1, diff.GetProperty("acceptToReject").GetInt32());
+        rules = await client.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/rules");
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/rules/candidate-v2/promote", new PromoteCommand(rules.GetProperty("revision").GetInt64()))).StatusCode);
+        client.DefaultRequestHeaders.Remove("Idempotency-Key"); client.DefaultRequestHeaders.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
+        var promoted = impact with { Id = "CLM-SQL-NEW-" + Guid.NewGuid().ToString("N"), MemberId = "SYN-NEW-" + Guid.NewGuid().ToString("N"), Amount = 42m };
+        var promotedResponse = await client.PostAsJsonAsync("/api/claims", promoted); Assert.Equal(HttpStatusCode.Accepted, promotedResponse.StatusCode);
+        Assert.Equal("candidate-v2", (await saved.Claims.SingleAsync(c => c.Id == promoted.Id)).RuleVersion);
+        await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => saved.Database.ExecuteSqlRawAsync("UPDATE RuleSets SET ContentHash='Forbidden'"));
+        await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => saved.Database.ExecuteSqlRawAsync("UPDATE RuleEvaluations SET CandidateOutcome='Accepted'"));
+
 
     }
 }

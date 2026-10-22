@@ -1,0 +1,190 @@
+{
+  "schemaVersion": 1,
+  "version": "phase0-v1",
+  "effectiveFrom": "1900-01-01T00:00:00Z",
+  "effectiveUntil": null,
+  "rules": [
+    {
+      "domain": "Claim",
+      "id": "REQUIRED_ID",
+      "field": "Id",
+      "operator": "Required",
+      "fix": "Provide a synthetic Id value."
+    },
+    {
+      "domain": "Claim",
+      "id": "LENGTH_ID",
+      "field": "Id",
+      "operator": "MaxLength",
+      "fix": "Use at most 64 characters.",
+      "maxLength": 64,
+      "when": "Present"
+    },
+    {
+      "domain": "Claim",
+      "id": "REQUIRED_PROVIDER_NPI",
+      "field": "ProviderNpi",
+      "operator": "Required",
+      "fix": "Provide a synthetic ProviderNpi value."
+    },
+    {
+      "domain": "Claim",
+      "id": "LENGTH_PROVIDER_NPI",
+      "field": "ProviderNpi",
+      "operator": "MaxLength",
+      "fix": "Use at most 10 characters.",
+      "maxLength": 10,
+      "when": "Present"
+    },
+    {
+      "domain": "Claim",
+      "id": "REQUIRED_MEMBER_ID",
+      "field": "MemberId",
+      "operator": "Required",
+      "fix": "Provide a synthetic MemberId value."
+    },
+    {
+      "domain": "Claim",
+      "id": "LENGTH_MEMBER_ID",
+      "field": "MemberId",
+      "operator": "MaxLength",
+      "fix": "Use at most 64 characters.",
+      "maxLength": 64,
+      "when": "Present"
+    },
+    {
+      "domain": "Claim",
+      "id": "REQUIRED_RULE_VERSION",
+      "field": "RuleVersion",
+      "operator": "Required",
+      "fix": "Provide a synthetic RuleVersion value."
+    },
+    {
+      "domain": "Claim",
+      "id": "LENGTH_RULE_VERSION",
+      "field": "RuleVersion",
+      "operator": "MaxLength",
+      "fix": "Use at most 32 characters.",
+      "maxLength": 32,
+      "when": "Present"
+    },
+    {
+      "domain": "Claim",
+      "id": "NPI_FORMAT",
+      "field": "ProviderNpi",
+      "operator": "Digits",
+      "fix": "Use exactly 10 ASCII digits for the synthetic NPI.",
+      "length": 10,
+      "when": "Present"
+    },
+    {
+      "domain": "Claim",
+      "id": "NPI_CHECKSUM",
+      "field": "ProviderNpi",
+      "operator": "NpiChecksum",
+      "fix": "Correct the Luhn check digit using the 80840 prefix; demo NPI: 0000000006.",
+      "when": "Digits10"
+    },
+    {
+      "domain": "Claim",
+      "id": "SYNTHETIC_MEMBER",
+      "field": "MemberId",
+      "operator": "Prefix",
+      "fix": "Use a fabricated member ID beginning with SYN-. Never submit real member data.",
+      "prefix": "SYN-",
+      "when": "Present"
+    },
+    {
+      "domain": "Claim",
+      "id": "REQUIRED_SERVICE_DATE",
+      "field": "ServiceDate",
+      "operator": "DateRequired",
+      "fix": "Provide a synthetic service date in YYYY-MM-DD format."
+    },
+    {
+      "domain": "Claim",
+      "id": "REQUIRED_PROCEDURE_CODES",
+      "field": "ProcedureCodes",
+      "operator": "CodesRequired",
+      "fix": "Provide at least one nonempty synthetic procedure code."
+    },
+    {
+      "domain": "Claim",
+      "id": "PROCEDURE_CODES_LIMIT",
+      "field": "ProcedureCodes",
+      "operator": "CodesShape",
+      "fix": "Use at most 50 codes, each no longer than 32 characters.",
+      "maxCount": 50,
+      "maxLength": 32,
+      "when": "CodesPresent"
+    },
+    {
+      "domain": "Claim",
+      "id": "AMOUNT_RANGE",
+      "field": "Amount",
+      "operator": "Currency",
+      "fix": "Provide a positive amount with at most two decimal places and at most 16 integer digits.",
+      "min": 0.0000000000000000000000000001,
+      "max": 9999999999999999.99,
+      "scale": 2
+    },
+    {
+      "domain": "PriorAuth",
+      "id": "PA_ID",
+      "field": "Id",
+      "operator": "StringShape",
+      "fix": "Provide a request identifier of 1\u201364 ASCII letters, digits, dots, hyphens or underscores.",
+      "minLength": 1,
+      "maxLength": 64,
+      "alphabet": "Identifier"
+    },
+    {
+      "domain": "PriorAuth",
+      "id": "PA_MEMBER",
+      "field": "MemberId",
+      "operator": "StringShape",
+      "fix": "Provide a fabricated member identifier beginning with SYN-, up to 64 printable ASCII characters without spaces.",
+      "minLength": 5,
+      "maxLength": 64,
+      "prefix": "SYN-",
+      "alphabet": "Printable"
+    },
+    {
+      "domain": "PriorAuth",
+      "id": "PA_PROVIDER_NPI",
+      "field": "RequestingProviderNpi",
+      "operator": "NpiChecksum",
+      "fix": "Provide a fabricated 10-digit NPI with the 80840-prefix Luhn checksum; demo: 0000000006."
+    },
+    {
+      "domain": "PriorAuth",
+      "id": "PA_SERVICES",
+      "field": "ServiceCodes",
+      "operator": "CodesShape",
+      "fix": "Provide 1\u201350 distinct fabricated SYN- service codes, each up to 32 ASCII letters, digits, dots, hyphens or underscores.",
+      "maxCount": 50,
+      "minLength": 5,
+      "maxLength": 32,
+      "prefix": "SYN-",
+      "alphabet": "Identifier"
+    },
+    {
+      "domain": "PriorAuth",
+      "id": "PA_PRIORITY",
+      "field": "Priority",
+      "operator": "Allowed",
+      "fix": "Use routine/elective (standard) or urgent (expedited) in the documented subset.",
+      "values": [
+        "Standard",
+        "Expedited"
+      ]
+    },
+    {
+      "domain": "PriorAuth",
+      "id": "PA_SUBMITTED_AT",
+      "field": "SubmittedAt",
+      "operator": "DateRequired",
+      "fix": "Provide a complete submitted timestamp with seconds and an explicit UTC offset; X12 BHT timestamps are interpreted as UTC."
+    }
+  ]
+}

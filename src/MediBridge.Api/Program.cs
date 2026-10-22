@@ -1,5 +1,7 @@
 using System.Text.Json.Serialization;
 using MediBridge.Core;
+using MediBridge.Core.Rules;
+using MediBridge.Infrastructure.Rules;
 using MediBridge.Core.PriorAuth;
 using MediBridge.Infrastructure;
 using MediBridge.Infrastructure.PriorAuth;
@@ -11,11 +13,12 @@ builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.C
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options => options.SwaggerDoc("v1", new Microsoft.OpenApi.OpenApiInfo
 {
-    Title = "MediBridge synthetic claims API", Version = "0.7.0",
+    Title = "MediBridge synthetic claims API", Version = "0.8.0",
     Description = "Synthetic data only. Not affiliated with any payer. No real member or provider data."
 }));
 builder.Services.AddSingleton<ClaimWriteLock>();
 builder.Services.AddScoped<ClaimStore>();
+builder.Services.AddScoped<RuleRegistry>();
 builder.Services.AddScoped<X12Intake>();
 builder.Services.AddScoped<PriorAuthStore>();
 builder.Services.AddScoped<PriorAuthLifecycleStore>();
@@ -60,7 +63,7 @@ app.UseStaticFiles();
 app.UseSwagger();
 app.UseSwaggerUI();
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok", version = "0.7.0" }));
+app.MapGet("/health", () => Results.Ok(new { status = "ok", version = "0.8.0" }));
 app.MapGet("/api/claims", async (ClaimsDbContext db, CancellationToken cancellationToken) =>
     Results.Ok(await db.Claims.AsNoTracking().OrderBy(c => c.Id).ToListAsync(cancellationToken)));
 
@@ -72,21 +75,22 @@ app.MapGet("/api/claims/{id}", async (string id, ClaimsDbContext db, Cancellatio
     return Results.Ok(new ClaimResponse(claim, timeline, claim.ValidationFailures));
 });
 
-app.MapPost("/api/claims", async (ClaimSubmission request, ClaimStore store, CancellationToken cancellationToken) =>
+app.MapPost("/api/claims", async (ClaimSubmission request, ClaimStore store, IClock clock, CancellationToken cancellationToken) =>
 {
     var claim = new Claim
     {
         Id = request.Id ?? "", ProviderNpi = request.ProviderNpi ?? "", MemberId = request.MemberId ?? "",
         ServiceDate = request.ServiceDate, ProcedureCodes = request.ProcedureCodes ?? [],
-        Amount = request.Amount, RuleVersion = request.RuleVersion ?? ClaimRules.Version
+        Amount = request.Amount, RuleVersion = request.RuleVersion ?? ClaimRules.Version, PlanType = request.PlanType ?? "Unspecified"
     };
+    if (!RuleCatalog.ValidPlan(claim.PlanType)) return Results.BadRequest(new { detail = "Use Unspecified, SYN-BASIC or SYN-PLUS plan type." });
     // Invalid identities cannot be persisted; other business failures are retained as rejected claims.
     if (!Enum.IsDefined(request.Simulation))
         return Results.BadRequest(new { validation = new[] { new ValidationFailure("SIMULATION_SUPPORTED", "Simulation", "Use None or DownstreamTimeout.") } });
     if (string.IsNullOrWhiteSpace(claim.Id) || claim.Id.Length > 64 || claim.ProviderNpi.Length > 200
         || claim.MemberId.Length > 200 || claim.RuleVersion.Length > 200)
         return Results.BadRequest(new { validation = ClaimRules.Validate(claim), detail = "Supply an ID (1–64 characters), fields up to 200 characters, and a supported simulation." });
-    var result = await store.SubmitAsync(claim, request.Simulation, DateTime.UtcNow, cancellationToken);
+    var result = await store.SubmitAsync(claim, request.Simulation, clock.UtcNow.UtcDateTime, cancellationToken, resolveRuleVersion: request.RuleVersion is null);
     if (result is null)
         return Results.Conflict(new { validation = new[] { new ValidationFailure("DUPLICATE_ID", "Id", "Fetch the existing claim, or use a new synthetic claim ID.") } });
     var response = new ClaimResponse(result.Claim, result.Timeline, result.Claim.ValidationFailures);
@@ -99,7 +103,7 @@ app.MapPost("/api/claims", async (ClaimSubmission request, ClaimStore store, Can
     };
 });
 
-app.MapPost("/api/x12/837", async (HttpRequest request, X12Intake intake, CancellationToken cancellationToken) =>
+app.MapPost("/api/x12/837", async (HttpRequest request, X12Intake intake, IClock clock, CancellationToken cancellationToken) =>
 {
     if (!Microsoft.Net.Http.Headers.MediaTypeHeaderValue.TryParse(request.ContentType, out var contentType)
         || !contentType.MediaType.Equals("text/plain", StringComparison.OrdinalIgnoreCase)
@@ -126,7 +130,9 @@ app.MapPost("/api/x12/837", async (HttpRequest request, X12Intake intake, Cancel
     {
         return Results.BadRequest(new { detail = "Use UTF-8 text containing the documented ASCII X12 subset." });
     }
-    var results = await intake.ImportAsync(input, DateTime.UtcNow, cancellationToken);
+    var plan = request.Headers["X-Synthetic-Plan-Type"].ToString(); if (plan.Length == 0) plan = "Unspecified";
+    if (!RuleCatalog.ValidPlan(plan)) return Results.BadRequest(new { detail = "Use a supported X-Synthetic-Plan-Type." });
+    var results = await intake.ImportAsync(input, clock.UtcNow.UtcDateTime, cancellationToken, plan);
     return results.All(result => result.Status == "Rejected")
         ? Results.UnprocessableEntity(new { interchanges = results })
         : Results.Ok(new { interchanges = results });
@@ -141,11 +147,12 @@ app.MapGet("/api/outbox", async (ClaimsDbContext db, CancellationToken ct) =>
         .Select(m => new { m.Id, m.ClaimId, m.State, m.Deliveries, m.NextAttemptAt, m.LeaseUntil }).ToListAsync(ct)));
 
 app.MapPriorAuthEndpoints();
+app.MapRuleEndpoints();
 
 app.Run();
 
 public sealed record ClaimSubmission(string? Id, string? ProviderNpi, string? MemberId,
     DateOnly ServiceDate, List<string>? ProcedureCodes, decimal Amount,
-    string? RuleVersion = ClaimRules.Version, Simulation Simulation = Simulation.None);
+    string? RuleVersion = null, Simulation Simulation = Simulation.None, string? PlanType = null);
 public sealed record ClaimResponse(Claim Claim, IReadOnlyList<ClaimEvent> Timeline, IReadOnlyList<ValidationFailure> Validation);
 public partial class Program { }

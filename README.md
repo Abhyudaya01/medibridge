@@ -1,4 +1,4 @@
-# MediBridge · v0.7.0
+# MediBridge · v0.8.0
 
 Healthcare Claims & Prior Authorization Exception and Recovery Engine. Portfolio simulation on **synthetic data only**. **Not affiliated with any payer.** Never use real PHI, real member IDs, or real payer names or branding. All downstream processing is simulated locally; no healthcare services are called.
 
@@ -19,6 +19,14 @@ dotnet run --project benchmarks/parity -c Release
 ## Chunk 1c: measured chaos and HTTP load
 
 [Benchmark harnesses and measurement definitions](benchmarks/README.md) cover real processing-host kills/restarts against isolated SQLite databases and bounded k6 POST load. The chaos default is 1,000 iterations of 50 synthetic claims, 10% invalid, with 20% probabilistic transient failure injection. A harness-only virtual clock advances lease/backoff deadlines; these results measure correctness under crashes, not production recovery latency. [Measured results](benchmarks/RESULTS.md) link to the actual JSON artifacts. Live load requires separate approval for a temporary B1 window and verified restoration to F1; the exact version and SKU tested are recorded. No benchmark runs automatically from the demo page.
+
+## Chunk 3a: versioned validation and shadow impact
+
+Claim and prior-auth intake validation now uses versioned, effective-dated JSON definitions stored in the database and a deterministic Core evaluator. New receipts pin a promoted effective version; shadow candidates evaluate the same immutable inputs independently. Paired results and definition hashes are appended atomically with intake state. Candidate results and errors do not change live processing or PA outcomes.
+
+The demo's **Rule-change impact** view shows definitions, active/shadow status, promotion controls, and observed flips grouped by provider, distinct procedure/service code, and synthetic plan type. Enable the inactive `candidate-v2` and submit an actual synthetic sample to observe its amount cap while live validation follows the active rules. Nothing is counted until traffic is evaluated.
+
+See [the rule schema, effective-date selection, API, comparison denominator and audit guarantees](docs/versioned-rules.md). `GET /api/rules`, `POST /api/rules`, `POST /api/rules/{version}/shadow`, `GET /api/rules/{version}/shadow-diff`, and `POST /api/rules/{version}/promote` expose the workflow. POSTs require `Idempotency-Key`; control mutations also require the current `expectedRevision`. Initial rules preserve existing behavior. Plan metadata defaults to `Unspecified`; optional labels are `SYN-BASIC` and `SYN-PLUS`.
 
 ## Chunk 1b: reliable processing
 
@@ -68,7 +76,11 @@ flowchart LR
     Parser --> Ack[999-style acknowledgment]
     Parser --> Batch[Infrastructure: atomic interchange import]
     Batch --> EF
-    API --> Core[Core: claims, rules, deterministic processor]
+    API --> Registry[DB: immutable JSON versions and promotion history]
+    Registry --> Evaluator[Core: pure rule evaluator]
+    Evaluator --> Paired[Append-only live and shadow evaluations]
+    Paired --> Impact[Impact by provider, code and synthetic plan]
+    API --> Core[Core: claims and deterministic processor]
     API --> Store[Infrastructure: ClaimStore]
     Store --> Core
     Store --> EF[EF Core transaction]
@@ -119,7 +131,7 @@ dotnet test
 dotnet run --project src/MediBridge.Api --no-launch-profile --urls http://localhost:5080
 ```
 
-Open [the demo](http://localhost:5080/), [Swagger](http://localhost:5080/swagger), or [health](http://localhost:5080/health). Health returns `{"status":"ok","version":"0.7.0"}` and is a process liveness endpoint. Startup initializes storage and seeds the four scenarios before serving requests.
+Open [the demo](http://localhost:5080/), [Swagger](http://localhost:5080/swagger), or [health](http://localhost:5080/health). Health returns `{"status":"ok","version":"0.8.0"}` and is a process liveness endpoint. Startup initializes storage and seeds the four scenarios before serving requests.
 
 SQLite defaults to `src/MediBridge.Api/Data/medibridge.db` locally and `/home/data/medibridge.db` on Linux App Service. Override its path with `Database__Path` (configuration key `Database:Path`). Parent directories are created automatically. The database is outside the deployed application directory on Azure and persists across zip deployments when App Service storage is enabled.
 
@@ -131,7 +143,7 @@ Startup now applies provider-specific EF migrations. Known legacy EnsureCreated 
 
 | Method | Path | Behavior |
 |---|---|---|
-| GET | `/health` | 200 with status and version 0.7.0 |
+| GET | `/health` | 200 with status and version 0.8.0 |
 | GET | `/api/claims` | Ordered array of claims and current classification/validation failures |
 | GET | `/api/claims/{id}` | Claim, ordered full timeline, and validation failures; 404 if absent |
 | POST | `/api/claims` | Validate and atomically persist a claim with its timeline |
@@ -184,6 +196,7 @@ Watch a deployment with `gh run list --workflow deploy.yml`, then `gh run watch 
 - **Chunk 1b (implemented):** durable idempotency, outbox/receipts, bounded retries, correction queue, fault injection, dual-provider migrations, and free-offer Azure SQL.
 - **Chunk 1c (implemented):** measured chaos/recovery and HTTP load harnesses; results include test environment and limitations.
 - **Phase 1 (next):** richer exception and recovery workflows on the validation/audit/intake foundation.
+- **Chunk 3a (implemented):** DB-backed effective-dated JSON validation, isolated shadow comparisons, audited promotion, and rule-change impact view.
 - **Chunk 2b (implemented):** Receipt-based SLA clocks, structured review decisions, audit-derived metrics, SLA board, and measured 10,000-request accelerated backlog simulation.
 - **Chunk 2a (implemented):** X12 278 / FHIR R4 prior-authorization intake, canonical mapping, audit timelines, paired samples, and measured parity.
 - **Phase 2 (next):** expanded synthetic authorization review, versioned rules, and decision workflows.
@@ -201,3 +214,16 @@ dotnet run --project benchmarks/sla -c Release
 ```
 
 Submit a new synthetic intake first using the demo or the documented 278/FHIR samples. The review controls, SLA board and metrics panel are available on the same landing page. Final decisions are terminal. These are simulation windows and reviewer-entered outcomes, not clinical or coverage recommendations.
+
+### Try shadow rules locally
+
+```sh
+curl http://localhost:5080/api/rules
+# Use the actual revision returned above.
+curl -X POST http://localhost:5080/api/rules/candidate-v2/shadow \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: SYN-SHADOW-ENABLE-1' \
+  -d '{"enabled":true,"expectedRevision":0}'
+curl http://localhost:5080/api/rules/candidate-v2/shadow-diff
+```
+
+Use the demo's **Submit synthetic impact sample** button to record real comparison observations. Omit `ruleVersion` on JSON claims to resolve the active version at receipt; an explicit mismatched version still requires manual review. Effective dates use receipt time, and previous transactions remain pinned to their saved evaluations.

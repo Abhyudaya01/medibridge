@@ -78,6 +78,7 @@ form.addEventListener('submit', async event => {
   const values = new FormData(form);
   const request = Object.fromEntries(values);
   request.amount = Number(values.get('amount'));
+  if (!request.ruleVersion) delete request.ruleVersion;
   request.procedureCodes = values.get('procedureCodes').split(',').map(code => code.trim()).filter(Boolean);
   try {
     const response = await fetch('/api/claims', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': requestKey('/api/claims', JSON.stringify(request)) }, body: JSON.stringify(request) });
@@ -122,7 +123,7 @@ byId('x12-form').addEventListener('submit', async event => {
   status.textContent = 'Parsing the synthetic interchange…';
   results.replaceChildren();
   try {
-    const response = await fetch('/api/x12/837', { method: 'POST', headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Idempotency-Key': requestKey('/api/x12/837', x12Text.value) }, body: x12Text.value });
+    const response = await fetch('/api/x12/837', { method: 'POST', headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-Synthetic-Plan-Type': byId('x12-plan-type').value, 'Idempotency-Key': requestKey('/api/x12/837:' + byId('x12-plan-type').value, x12Text.value) }, body: x12Text.value });
     if (![200, 422].includes(response.status)) throw new Error(`HTTP ${response.status}; verify content type, encoding, and size.`);
     const data = await response.json();
     status.textContent = `${data.interchanges.length} interchange(s) processed · HTTP ${response.status}. Accepted syntax and claim outcomes are reported separately.`;
@@ -193,7 +194,7 @@ byId('pa-form').addEventListener('submit', async event => {
   const format = byId('pa-format').value; const payload = byId('pa-text').value; const path = `/api/pa/${format}`;
   try {
     if (new TextEncoder().encode(payload).length > 65536) throw new Error('Input exceeds 64 KiB.');
-    const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': format === 'fhir' ? 'application/fhir+json' : 'text/plain; charset=utf-8', 'Idempotency-Key': requestKey(path, payload) }, body: payload });
+    const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': format === 'fhir' ? 'application/fhir+json' : 'text/plain; charset=utf-8', 'X-Synthetic-Plan-Type': byId('pa-plan-type').value, 'Idempotency-Key': requestKey(path + ':' + byId('pa-plan-type').value, payload) }, body: payload });
     const body = await response.text(); showPa(body ? JSON.parse(body) : { detail: 'Check content type, encoding, and size.' }, response.status);
     await loadSla();
   } catch (error) { byId('pa-status').textContent = `PA intake failed: ${error.message}`; }
@@ -270,3 +271,93 @@ byId('pa-decision-form').addEventListener('submit', async event => {
 });
 refreshSla();
 setInterval(refreshSla, 30000);
+
+let ruleRegistry = null;
+let ruleImpactRequest = 0;
+let ruleRequestInFlight = false;
+async function loadRules() {
+  const response = await fetch('/api/rules');
+  if (!response.ok) throw new Error(`Rules returned HTTP ${response.status}.`);
+  ruleRegistry = await response.json();
+  const select = byId('rules-version'); const previous = select.value;
+  select.replaceChildren(...ruleRegistry.versions.map(version => {
+    const option = element('option', version.version + (version.active ? ' · active' : version.shadow ? ' · shadow' : ''));
+    option.value = version.version; return option;
+  }));
+  select.value = ruleRegistry.versions.some(v => v.version === previous) ? previous : ruleRegistry.shadowVersion || ruleRegistry.versions.find(v => !v.active)?.version || ruleRegistry.activeVersion;
+  byId('rules-active').textContent = `Live: ${ruleRegistry.activeVersion} · Shadow: ${ruleRegistry.shadowVersion || 'disabled'} · Revision ${ruleRegistry.revision}`;
+  const submittedVersions = form.elements.ruleVersion; const selected = submittedVersions.value;
+  submittedVersions.replaceChildren(element('option', 'Active version at receipt'));
+  submittedVersions.options[0].value = '';
+  for (const version of ruleRegistry.versions) { const option = element('option', `${version.version} · explicit`); option.value = version.version; submittedVersions.append(option); }
+  const conflict = element('option', 'phase0-v0 · conflict'); conflict.value = 'phase0-v0'; submittedVersions.append(conflict);
+  if ([...submittedVersions.options].some(option => option.value === selected)) submittedVersions.value = selected;
+  await showRuleImpact();
+}
+async function showRuleImpact() {
+  const requestNumber = ++ruleImpactRequest;
+  if (!ruleRegistry) return;
+  const version = ruleRegistry.versions.find(v => v.version === byId('rules-version').value);
+  if (!version) return;
+  byId('rules-definition').textContent = version.definitionJson;
+  byId('rules-definition-meta').textContent = `${version.contentHash} · Effective ${version.effectiveFrom} until ${version.effectiveUntil || 'open ended'} · ${version.eligibleNow ? 'effective now' : 'outside effective window'}`;
+  byId('rules-enable').disabled = ruleRequestInFlight || version.active || !!ruleRegistry.shadowVersion;
+  byId('rules-disable').disabled = ruleRequestInFlight || !version.shadow;
+  byId('rules-promote').disabled = ruleRequestInFlight || version.active || !version.eligibleNow;
+  byId('rules-sample').disabled = ruleRequestInFlight || !ruleRegistry.shadowVersion;
+  const response = await fetch(`/api/rules/${encodeURIComponent(version.version)}/shadow-diff`);
+  if (!response.ok) throw new Error(`Impact returned HTTP ${response.status}.`);
+  const diff = await response.json();
+  if (requestNumber !== ruleImpactRequest || byId('rules-version').value !== version.version) return;
+  byId('rules-compared').textContent = diff.compared;
+  byId('rules-flipped').textContent = diff.flipped;
+  byId('rules-to-reject').textContent = diff.acceptToReject;
+  byId('rules-to-accept').textContent = diff.rejectToAccept;
+  byId('rules-diff-note').textContent = `${diff.observed} observations · ${diff.candidateErrors} candidate errors · ${diff.protocolRejected} protocol rejections · Baselines: ${diff.baselineVersions.join(', ') || 'no comparisons yet'}. Code groups overlap; totals count each mapped transaction once. Groups below show observed flips.`;
+  for (const [id, rows] of [['rules-provider', diff.byProvider], ['rules-code', diff.byProcedureCode], ['rules-plan', diff.byPlanType]]) {
+    const changed = rows.filter(row => row.flipped > 0);
+    byId(id).replaceChildren(...changed.map(group => {
+      const row = element('tr');
+      for (const value of [`${group.domain} / ${group.value}`, group.compared, group.acceptToReject, group.rejectToAccept]) row.append(element('td', value));
+      return row;
+    }));
+    if (!changed.length) { const row = element('tr'); const cell = element('td', 'No observed flips.'); cell.colSpan = 4; row.append(cell); byId(id).append(row); }
+  }
+}
+async function changeRules(action) {
+  if (!ruleRegistry || ruleRequestInFlight) return;
+  const version = byId('rules-version').value; const path = `/api/rules/${encodeURIComponent(version)}/${action === 'promote' ? 'promote' : 'shadow'}`;
+  const command = { expectedRevision: ruleRegistry.revision };
+  if (action !== 'promote') command.enabled = action === 'enable';
+  const payload = JSON.stringify(command); ruleRequestInFlight = true;
+  for (const id of ['rules-enable', 'rules-disable', 'rules-promote', 'rules-sample']) byId(id).disabled = true;
+  try {
+    const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': requestKey(path, payload) }, body: payload });
+    const result = await response.json();
+    if (response.status < 500) requestKeys.delete(path + '\n' + payload);
+    if (!response.ok) throw new Error(result.detail || `HTTP ${response.status}`);
+    byId('rules-status').textContent = `${version}: ${action === 'promote' ? 'promoted for new effective receipts' : action === 'enable' ? 'shadow enabled' : 'shadow disabled'}.`;
+  } catch (error) { byId('rules-status').textContent = error.message; }
+  finally { ruleRequestInFlight = false; await loadRules().catch(error => byId('rules-status').textContent = error.message); }
+}
+byId('rules-refresh').addEventListener('click', () => loadRules().catch(error => byId('rules-status').textContent = error.message));
+byId('rules-version').addEventListener('change', () => showRuleImpact().catch(error => byId('rules-status').textContent = error.message));
+byId('rules-enable').addEventListener('click', () => changeRules('enable'));
+byId('rules-disable').addEventListener('click', () => changeRules('disable'));
+byId('rules-promote').addEventListener('click', () => changeRules('promote'));
+byId('rules-sample').addEventListener('click', async () => {
+  if (ruleRequestInFlight) return;
+  ruleRequestInFlight = true; byId('rules-sample').disabled = true;
+  try {
+    const suffix = crypto.randomUUID().slice(0, 12);
+    const request = { id: 'CLM-IMPACT-' + suffix, providerNpi: '0000000006', memberId: 'SYN-IMPACT-' + suffix,
+      serviceDate: '2026-01-20', procedureCodes: ['SYN-IMPACT'], amount: 150, planType: byId('rules-sample-plan').value };
+    const response = await fetch('/api/claims', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(request) });
+    const result = await response.json();
+    if (!result.claim) throw new Error(result.detail || `HTTP ${response.status}`);
+    byId('rules-status').textContent = `${request.id}: live ${result.claim.status} under ${result.claim.ruleVersion}; HTTP ${response.status}. Stored impact refreshed.`;
+    await loadClaims();
+  } catch (error) { byId('rules-status').textContent = error.message; }
+  finally { ruleRequestInFlight = false; await loadRules().catch(error => byId('rules-status').textContent = error.message); }
+});
+loadRules().catch(error => byId('rules-status').textContent = error.message);

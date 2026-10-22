@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MediBridge.Infrastructure.Rules;
 using MediBridge.Infrastructure.PriorAuth;
 using MediBridge.Core;
 using Microsoft.EntityFrameworkCore;
@@ -8,6 +9,10 @@ namespace MediBridge.Infrastructure;
 
 public class ClaimsDbContext(DbContextOptions options) : DbContext(options)
 {
+    public DbSet<RuleSetRecord> RuleSets => Set<RuleSetRecord>();
+    public DbSet<RuleControl> RuleControls => Set<RuleControl>();
+    public DbSet<RuleActivation> RuleActivations => Set<RuleActivation>();
+    public DbSet<RuleEvaluationRecord> RuleEvaluations => Set<RuleEvaluationRecord>();
     public DbSet<PriorAuthRecord> PriorAuthRequests => Set<PriorAuthRecord>();
     public DbSet<PriorAuthEvent> PriorAuthEvents => Set<PriorAuthEvent>();
     public DbSet<Claim> Claims => Set<Claim>();
@@ -20,6 +25,15 @@ public class ClaimsDbContext(DbContextOptions options) : DbContext(options)
 
     protected override void OnModelCreating(ModelBuilder model)
     {
+        var rules = model.Entity<RuleSetRecord>(); rules.HasKey(r => r.Version); rules.Property(r => r.Version).HasMaxLength(32).UseCollation(Database.IsSqlServer() ? "Latin1_General_100_BIN2" : "BINARY"); rules.Property(r => r.ContentHash).HasMaxLength(64);
+        var control = model.Entity<RuleControl>(); control.HasKey(r => r.Id); control.Property(r => r.Revision).IsConcurrencyToken(); control.Property(r => r.ShadowVersion).HasMaxLength(32).UseCollation(Database.IsSqlServer() ? "Latin1_General_100_BIN2" : "BINARY");
+        control.HasOne<RuleSetRecord>().WithMany().HasForeignKey(r => r.ShadowVersion).OnDelete(DeleteBehavior.Restrict);
+        var activation = model.Entity<RuleActivation>(); activation.HasKey(r => r.Id); activation.Property(r => r.Version).HasMaxLength(32).UseCollation(Database.IsSqlServer() ? "Latin1_General_100_BIN2" : "BINARY"); activation.HasOne<RuleSetRecord>().WithMany().HasForeignKey(r => r.Version).OnDelete(DeleteBehavior.Restrict);
+        var evaluation = model.Entity<RuleEvaluationRecord>(); evaluation.HasKey(r => r.Id); evaluation.Property(r => r.Id).HasMaxLength(32); evaluation.Property(r => r.TransactionId).HasMaxLength(64); evaluation.Property(r => r.Domain).HasMaxLength(16); evaluation.Property(r => r.Source).HasMaxLength(32); evaluation.Property(r => r.Provider).HasMaxLength(200); evaluation.Property(r => r.PlanType).HasMaxLength(32);
+        foreach (var name in new[] { "LiveVersion", "CandidateVersion" }) evaluation.Property<string>(name).HasMaxLength(32).UseCollation(Database.IsSqlServer() ? "Latin1_General_100_BIN2" : "BINARY");
+        evaluation.Property(r => r.LiveHash).HasMaxLength(64); evaluation.Property(r => r.CandidateHash).HasMaxLength(64); evaluation.Property(r => r.LiveOutcome).HasMaxLength(16); evaluation.Property(r => r.CandidateOutcome).HasMaxLength(16);
+        evaluation.HasIndex(r => new { r.CandidateVersion, r.ReceivedAtTicks });
+        if (Database.IsSqlServer()) { rules.ToTable("RuleSets", t => t.UseSqlOutputClause(false)); activation.ToTable("RuleActivations", t => t.UseSqlOutputClause(false)); evaluation.ToTable("RuleEvaluations", t => t.UseSqlOutputClause(false)); }
         var pa = model.Entity<PriorAuthRecord>(); pa.HasKey(r => r.Id); pa.Property(r => r.Id).HasMaxLength(64).UseCollation(Database.IsSqlServer() ? "Latin1_General_100_BIN2" : "BINARY");
         pa.Property(r => r.Outcome).HasMaxLength(32); pa.Property(r => r.SourceFormat).HasMaxLength(32);
         pa.Property(r => r.Version).IsConcurrencyToken();
@@ -36,6 +50,7 @@ public class ClaimsDbContext(DbContextOptions options) : DbContext(options)
         claim.Property(c => c.ProviderNpi).HasMaxLength(200);
         claim.Property(c => c.MemberId).HasMaxLength(200);
         claim.Property(c => c.RuleVersion).HasMaxLength(200);
+        claim.Property(c => c.PlanType).HasMaxLength(32).HasDefaultValue("Unspecified");
         // Preserve exact submitted decimals, including rejected currency precision, on both providers.
         claim.Property(c => c.Amount).HasConversion<string>().HasMaxLength(64);
         claim.Property(c => c.Status).HasConversion<string>().HasMaxLength(32);
@@ -92,6 +107,9 @@ public class ClaimsDbContext(DbContextOptions options) : DbContext(options)
     private void EnforceAudit()
     {
         ChangeTracker.DetectChanges();
+        if (ChangeTracker.Entries().Any(e => e.Entity is RuleSetRecord or RuleActivation or RuleEvaluationRecord && e.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Rule definitions, activations and evaluations are append-only.");
+        if (ChangeTracker.Entries<RuleControl>().Any(e => e.State == EntityState.Deleted)) throw new InvalidOperationException("Rule control cannot be deleted.");
         if (ChangeTracker.Entries<PriorAuthEvent>().Any(e => e.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("PriorAuthEvents is append-only.");
         var auditedPaIds = ChangeTracker.Entries<PriorAuthEvent>().Where(e => e.State == EntityState.Added).Select(e => e.Entity.RequestId).ToHashSet(StringComparer.Ordinal);
@@ -105,13 +123,13 @@ public class ClaimsDbContext(DbContextOptions options) : DbContext(options)
             if (entry.Entity is OutboxMessage message && entry.State == EntityState.Modified) message.Version = (long)entry.Property("Version").OriginalValue! + 1;
             if (entry.Entity is HandlerReceipt or IdempotencyRecord && entry.State == EntityState.Modified)
                 throw new InvalidOperationException("Committed responses and handler receipts are immutable.");
-            if (entry.Entity is not (OutboxMessage or HandlerReceipt or CorrectionItem or IdempotencyRecord or PriorAuthRecord)) continue;
+            if (entry.Entity is not (OutboxMessage or HandlerReceipt or CorrectionItem or IdempotencyRecord or PriorAuthRecord or RuleSetRecord or RuleControl or RuleActivation or RuleEvaluationRecord)) continue;
             if (entry.State == EntityState.Deleted) throw new InvalidOperationException("Reliability records cannot be deleted.");
             Audit.Add(new AuditEntry
             {
                 Timestamp = DateTime.UtcNow, EntityType = entry.Entity.GetType().Name,
-                EntityId = entry.Entity switch { OutboxMessage m => m.Id, HandlerReceipt r => r.Id, CorrectionItem c => c.ClaimId, IdempotencyRecord r => r.Id, PriorAuthRecord p => p.Id, _ => "" },
-                Action = entry.State.ToString(), Detail = entry.Entity is OutboxMessage m2 ? $"{m2.State}; deliveries={m2.Deliveries}; version={m2.Version}" : "Durable record saved."
+                EntityId = entry.Entity switch { OutboxMessage m => m.Id, HandlerReceipt r => r.Id, CorrectionItem c => c.ClaimId, IdempotencyRecord r => r.Id, PriorAuthRecord p => p.Id, RuleSetRecord r => r.Version, RuleControl => "registry", RuleActivation r => r.Version, RuleEvaluationRecord r => r.Id, _ => "" },
+                Action = entry.State.ToString(), Detail = entry.Entity is OutboxMessage m2 ? $"{m2.State}; deliveries={m2.Deliveries}; version={m2.Version}" : entry.Entity is RuleControl rc ? $"revision={rc.Revision}; shadow={rc.ShadowVersion ?? "off"}" : entry.Entity is RuleActivation ra ? $"Promoted {ra.Version}; atTicks={ra.ActivatedAtTicks}" : "Durable record saved."
             });
         }
         if (ChangeTracker.Entries<ClaimEvent>().Any(e => e.State is EntityState.Modified or EntityState.Deleted))

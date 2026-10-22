@@ -1,4 +1,6 @@
 using MediBridge.Core;
+using MediBridge.Core.Rules;
+using MediBridge.Infrastructure.Rules;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -12,16 +14,20 @@ public sealed class ClaimWriteLock
 
 public sealed class ClaimStore(ClaimsDbContext db, ClaimWriteLock writeLock)
 {
-    public async Task<ProcessingResult?> SubmitAsync(Claim claim, Simulation simulation, DateTime timestamp, CancellationToken cancellationToken = default)
+    public async Task<ProcessingResult?> SubmitAsync(Claim claim, Simulation simulation, DateTime timestamp, CancellationToken cancellationToken = default, bool resolveRuleVersion = false)
     {
         await writeLock.Gate.WaitAsync(cancellationToken);
         try
         {
             if (await db.Claims.AnyAsync(c => c.Id == claim.Id, cancellationToken)) return null;
-            var valid = ClaimRules.Validate(claim).Count == 0;
+            var snapshot = await new RuleRegistry(db).SnapshotAsync(new DateTimeOffset(DateTime.SpecifyKind(timestamp, DateTimeKind.Utc)), cancellationToken);
+            if (resolveRuleVersion) claim.RuleVersion = snapshot.Live.Version;
+            var evaluation = await RuleRegistry.EvaluateAsync(snapshot, RuleInput.From(claim), new DateTimeOffset(DateTime.SpecifyKind(timestamp, DateTimeKind.Utc)), "JSON-Claim", ct: cancellationToken);
+            var valid = evaluation.Live.Failures.Count == 0;
             var key = valid ? ClaimRules.DuplicateKey(claim) : null;
             var duplicate = key is not null && await HasKeyAsync(key, cancellationToken);
-            var result = ClaimProcessor.Process(claim, duplicate, simulation, timestamp);
+            var result = ClaimProcessor.Process(claim, duplicate, simulation, timestamp, evaluation.Live, snapshot.Live.Version);
+            db.RuleEvaluations.Add(evaluation.Record);
             Track(result, key);
             try
             {
@@ -33,7 +39,8 @@ public sealed class ClaimStore(ClaimsDbContext db, ClaimWriteLock writeLock)
                 db.ChangeTracker.Clear();
                 if (await db.Claims.AnyAsync(c => c.Id == claim.Id, cancellationToken)) return null;
                 if (key is null || !await HasKeyAsync(key, cancellationToken)) throw;
-                result = ClaimProcessor.Process(claim, true, simulation, timestamp);
+                result = ClaimProcessor.Process(claim, true, simulation, timestamp, evaluation.Live, snapshot.Live.Version);
+                db.RuleEvaluations.Add(evaluation.Record);
                 Track(result, null);
                 await db.SaveChangesAsync(cancellationToken);
             }

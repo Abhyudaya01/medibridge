@@ -43,7 +43,7 @@ public static class DatabaseBootstrapper
             && c.FailureCategory == MediBridge.Core.FailureCategory.BusinessRule && !db.Corrections.Any(q => q.ClaimId == c.Id)).ToListAsync(cancellationToken);
         foreach (var claim in legacyRejected) ReliableWrites.Track(db, claim, DateTime.UtcNow);
         if (legacyRejected.Count > 0) await db.SaveChangesAsync(cancellationToken);
-        foreach (var table in new[] { "ClaimEvents", "Audit", "PriorAuthEvents" })
+        foreach (var table in new[] { "ClaimEvents", "Audit", "PriorAuthEvents", "RuleSets", "RuleActivations", "RuleEvaluations" })
         {
             if (db.Database.IsSqlite())
             {
@@ -58,6 +58,8 @@ public static class DatabaseBootstrapper
                 await db.Database.ExecuteSqlRawAsync(appendOnly, cancellationToken);
             }
         }
+
+        await Rules.RuleRegistry.SeedAsync(db, cancellationToken);
 
         async Task<HashSet<string>> Columns(string table)
         {
