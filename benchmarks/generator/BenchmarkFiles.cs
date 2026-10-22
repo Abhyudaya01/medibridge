@@ -52,7 +52,7 @@ public static class BenchmarkFiles
 #else
     public const string BuildConfiguration = "Release";
 #endif
-    public static object SourceInfo()
+    public static object SourceInfo(params string[] extraDirectories)
     {
         string Git(params string[] args)
         {
@@ -64,23 +64,23 @@ public static class BenchmarkFiles
         var root = Git("rev-parse", "--show-toplevel");
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         var files = new List<string> { Path.Combine(root, "Directory.Build.props") };
-        foreach (var directory in new[] { "src/MediBridge.Core", "benchmarks/generator", "benchmarks/shadow" })
+        foreach (var directory in new[] { "src/MediBridge.Core", "benchmarks/generator", "benchmarks/shadow" }.Concat(extraDirectories).Distinct(StringComparer.Ordinal))
             files.AddRange(Directory.GetFiles(Path.Combine(root, directory), "*", SearchOption.AllDirectories)
                 .Where(p => !p.Contains("/bin/") && !p.Contains("/obj/") && Path.GetExtension(p) is ".cs" or ".csproj" or ".json"));
         foreach (var path in files.Order(StringComparer.Ordinal))
         { hash.AppendData(Encoding.UTF8.GetBytes(Path.GetRelativePath(root, path).Replace('\\', '/') + "\n")); hash.AppendData(File.ReadAllBytes(path)); }
         return new { baseCommit = Git("rev-parse", "HEAD"), contentSha256 = Convert.ToHexString(hash.GetHashAndReset()),
-            scope = "Directory.Build.props, Core, generator and shadow sources including rule JSON; excludes bin/obj and result artifacts",
-            scopedWorkingTree = Git("status", "--porcelain", "--", "Directory.Build.props", "src/MediBridge.Core", "benchmarks/generator", "benchmarks/shadow").Length == 0 ? "clean" : "modified" };
+            scope = "Directory.Build.props, Core, generator and shadow sources including rule JSON; excludes bin/obj and result artifacts" + (extraDirectories.Length == 0 ? "" : "; additional source directories: " + string.Join(", ", extraDirectories)),
+            scopedWorkingTree = Git(new[] { "status", "--porcelain", "--", "Directory.Build.props", "src/MediBridge.Core", "benchmarks/generator", "benchmarks/shadow" }.Concat(extraDirectories).ToArray()).Length == 0 ? "clean" : "modified" };
     }
-    public static void Report(string output, object report, string harness, string runId, string status, string summary)
+    public static void Report(string output, object report, string harness, string runId, string status, string summary, string target = "Local SQLite / Core validation")
     {
         output = Path.GetFullPath(output); Directory.CreateDirectory(Path.GetDirectoryName(output)!);
         File.WriteAllText(output, JsonSerializer.Serialize(report, Json) + "\n");
         var ledger = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(output)!, "..", "RESULTS.md"));
         Directory.CreateDirectory(Path.GetDirectoryName(ledger)!);
         if (!File.Exists(ledger)) File.WriteAllText(ledger, "# Measured benchmark results\n\n| Completed UTC | Harness | Run ID | Status | Target | Measured result | Artifact |\n|---|---|---|---|---|---|---|\n");
-        File.AppendAllText(ledger, $"| {DateTimeOffset.UtcNow:O} | {harness} | {runId} | {status} | Local SQLite / Core validation | {summary} | `results/{Path.GetFileName(output)}` |\n");
+        File.AppendAllText(ledger, $"| {DateTimeOffset.UtcNow:O} | {harness} | {runId} | {status} | {target} | {summary} | `results/{Path.GetFileName(output)}` |\n");
     }
     public static Dictionary<string, string> Options(string[] args, params string[] allowed)
     {

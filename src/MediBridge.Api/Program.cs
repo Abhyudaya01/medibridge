@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using MediBridge.Infrastructure.Monitoring;
 using MediBridge.Core;
 using MediBridge.Core.Rules;
 using MediBridge.Infrastructure.Rules;
@@ -13,12 +14,13 @@ builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.C
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options => options.SwaggerDoc("v1", new Microsoft.OpenApi.OpenApiInfo
 {
-    Title = "MediBridge synthetic claims API", Version = "0.9.0",
+    Title = "MediBridge synthetic claims API", Version = "0.10.0",
     Description = "Synthetic data only. Not affiliated with any payer. No real member or provider data."
 }));
 builder.Services.AddSingleton<ClaimWriteLock>();
 builder.Services.AddScoped<ClaimStore>();
 builder.Services.AddScoped<RuleRegistry>();
+builder.Services.AddScoped<MonitoringStore>();
 builder.Services.AddScoped<X12Intake>();
 builder.Services.AddScoped<PriorAuthStore>();
 builder.Services.AddScoped<PriorAuthLifecycleStore>();
@@ -57,13 +59,14 @@ using (var scope = app.Services.CreateScope())
     while (await scope.ServiceProvider.GetRequiredService<PriorAuthLifecycleStore>().SweepAsync() > 0) { }
 }
 
+app.UseMiddleware<MonitoringMiddleware>();
 app.UseMiddleware<IdempotencyMiddleware>();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseSwagger();
 app.UseSwaggerUI();
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok", version = "0.9.0" }));
+app.MapGet("/health", () => Results.Ok(new { status = "ok", version = "0.10.0" }));
 app.MapGet("/api/claims", async (ClaimsDbContext db, CancellationToken cancellationToken) =>
     Results.Ok(await db.Claims.AsNoTracking().OrderBy(c => c.Id).ToListAsync(cancellationToken)));
 
@@ -145,6 +148,10 @@ app.MapGet("/api/queues/correction", async (ClaimsDbContext db, CancellationToke
 app.MapGet("/api/outbox", async (ClaimsDbContext db, CancellationToken ct) =>
     Results.Ok(await db.Outbox.AsNoTracking().OrderBy(m => m.ClaimId)
         .Select(m => new { m.Id, m.ClaimId, m.State, m.Deliveries, m.NextAttemptAt, m.LeaseUntil }).ToListAsync(ct)));
+
+app.MapGet("/api/monitoring/pcharts", async (MonitoringStore monitoring, IClock clock, CancellationToken ct) =>
+    Results.Ok(await monitoring.GetAsync(clock.UtcNow, ct)))
+    .WithSummary("Live failure p-charts: five-minute UTC batches, 20-batch fixed calibration and 3-sigma limits.");
 
 app.MapPriorAuthEndpoints();
 app.MapRuleEndpoints();

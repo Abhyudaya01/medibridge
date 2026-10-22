@@ -496,3 +496,6 @@ __pycache__/
 
 # Local synthetic corpus databases (reproducible; measured JSON is committed)
 benchmarks/work/
+
+# Commit the measured Core coverage summary; raw collector output remains ignored.
+!benchmarks/results/coverage.json

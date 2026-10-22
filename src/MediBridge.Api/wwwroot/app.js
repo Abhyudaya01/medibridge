@@ -377,3 +377,76 @@ async function loadRecordedShadowBenchmark() {
   byId('shadow-benchmark-detail').textContent = `${number.format(report.v1.rejected)} baseline rejections; ${number.format(report.falsePositive)} false positives; ${number.format(report.falseNegative)} missed flips. Evaluation plus oracle: ${report.evaluationAndOracleSeconds.toFixed(3)} s. Wall time includes SQLite reads and observation/audit persistence. This is a recorded local measurement; it does not measure Azure API capacity or change live rules.`;
 }
 loadRecordedShadowBenchmark().catch(error => byId('shadow-benchmark-status').textContent = error.message);
+
+let monitoringSeries = [];
+let monitoringChart;
+let monitoringRevision = 0;
+const chartPercent = value => value === null ? '—' : `${(100 * value).toFixed(3)}%`;
+function showMonitoringSeries() {
+  const series = monitoringSeries.find(item => item.id === byId('monitor-series').value);
+  if (monitoringChart) { monitoringChart.destroy(); monitoringChart = undefined; }
+  byId('monitor-points').replaceChildren();
+  if (!series) { byId('monitor-detail').textContent = 'No completed nonempty batches are available. Current partial batches do not produce alerts.'; return; }
+  const chart = series.chart;
+  byId('monitor-detail').textContent = `${series.label}${series.version ? ` · version ${series.version}` : ''} · ${chart.status === 'Ready' ? `Baseline ${chartPercent(chart.baselineRate)} from ${chart.baselineObservations} opportunities` : `Calibration ${chart.baselineBatches}/${chart.requiredBaselineBatches} batches; limits unavailable`} · ${series.omittedMiddleBatches || 0} middle batches omitted from display. Baseline points are retained.`;
+  byId('monitor-points').replaceChildren(...chart.points.map(point => {
+    const row = element('tr'); if (point.alert) row.className = 'alert-row';
+    const signal = point.isBaseline ? (point.outsideLimits ? 'Calibration excursion' : 'Calibration') : (point.alert ? 'OUT OF CONTROL' : chart.status === 'Ready' ? 'Within limits' : 'Awaiting baseline');
+    row.append(...[new Date(point.start).toISOString(), point.observations, point.failures, chartPercent(point.rate), chartPercent(point.lower), chartPercent(point.center), chartPercent(point.upper), signal + (point.normalApproximationReliable === false ? ' · low expected count' : '')].map(value => element('td', String(value))));
+    return row;
+  }));
+  if (typeof Chart === 'undefined') { byId('monitor-detail').textContent += ' Chart.js is unavailable; the accessible table contains all values.'; return; }
+  const points = chart.points;
+  monitoringChart = new Chart(byId('monitor-chart'), {
+    type: 'line',
+    data: {
+      labels: points.map(p => new Date(p.start).toISOString().slice(5, 16).replace('T', ' ')),
+      datasets: [
+        { label: 'Failure rate', data: points.map(p => p.rate), borderColor: '#226e8c', tension: 0,
+          pointBackgroundColor: points.map(p => p.alert ? '#bd3228' : p.isBaseline ? '#768590' : '#226e8c'),
+          pointRadius: points.map(p => p.alert ? 6 : 3), pointStyle: points.map(p => p.alert ? 'triangle' : 'circle') },
+        { label: 'Center', data: points.map(p => p.center), borderColor: '#398067', borderDash: [7, 4], pointRadius: 0 },
+        { label: 'Lower 3σ', data: points.map(p => p.lower), borderColor: '#aa6627', borderDash: [4, 4], pointRadius: 0 },
+        { label: 'Upper 3σ', data: points.map(p => p.upper), borderColor: '#aa6627', borderDash: [4, 4], pointRadius: 0 }
+      ]
+    },
+    options: { responsive: true, maintainAspectRatio: false, animation: false,
+      scales: { x: { title: { display: true, text: 'Batch start (UTC)' }, ticks: { maxTicksLimit: 10 } }, y: { min: 0, suggestedMax: Math.min(1, Math.max(.01, ...points.map(p => Math.max(p.rate, p.upper || 0))) * 1.15), title: { display: true, text: 'Failure rate' }, ticks: { callback: value => `${(value * 100).toFixed(0)}%` } } },
+      plugins: { tooltip: { callbacks: { label: item => `${item.dataset.label}: ${chartPercent(item.raw)}` } } }
+    }
+  });
+}
+async function loadMonitoring() {
+  const revision = ++monitoringRevision;
+  const source = byId('monitor-source').value;
+  byId('monitor-status').textContent = 'Loading control chart data…';
+  try {
+    const response = await fetch(source === 'live' ? '/api/monitoring/pcharts' : '/benchmarks/drift.json');
+    if (!response.ok) throw new Error(`Control chart data is unavailable (HTTP ${response.status}).`);
+    const report = await response.json();
+    if (revision !== monitoringRevision) return;
+    if (source === 'recorded') {
+      if (report.status !== 'completed') throw new Error('The recorded drift run did not complete.');
+      monitoringSeries = [{ id: 'recorded', label: 'Recorded synthetic failure stream · local Core simulation', chart: report.exampleChart }];
+      byId('monitor-status').textContent = `Recorded benchmark · seed ${report.seed} · change after ${report.baselineBatches} calibration batches. First trial alerted after ${report.firstTrial.batchesUntilAlert === null ? 'no alert within the observation window' : `${report.firstTrial.batchesUntilAlert} changed batch(es)`}. This is separate from live traffic.`;
+    } else {
+      monitoringSeries = report.series;
+      byId('monitor-status').textContent = `Live audit observations as of ${new Date(report.asOf).toISOString()} · ${report.excludedHistoricalOrInvalidEvaluations} historical, protocol-rejected or invalid evaluations excluded from rule denominators.`;
+    }
+    byId('monitor-series').replaceChildren(...monitoringSeries.map(series => { const option = element('option', `${series.label}${series.version ? ` · ${series.version}` : ''}`); option.value = series.id; return option; }));
+    showMonitoringSeries();
+  } catch (error) {
+    if (revision !== monitoringRevision) return;
+    monitoringSeries = []; byId('monitor-series').replaceChildren(); showMonitoringSeries(); byId('monitor-status').textContent = error.message;
+  }
+}
+byId('monitor-source').addEventListener('change', loadMonitoring);
+byId('monitor-refresh').addEventListener('click', loadMonitoring);
+byId('monitor-series').addEventListener('change', showMonitoringSeries);
+loadMonitoring();
+fetch('/benchmarks/coverage.json').then(async response => {
+  if (!response.ok) throw new Error('Recorded Core coverage is unavailable. See the results ledger.');
+  const report = await response.json();
+  if (report.status !== 'completed') throw new Error('Coverage collection did not complete.');
+  byId('core-coverage').textContent = `Recorded Core line coverage: ${report.coveredLines}/${report.totalLines} executable lines (${report.lineCoveragePercent.toFixed(2)}%). Coverlet in-process collector; crash-child processes are excluded. See the measured results ledger for provenance.`;
+}).catch(error => byId('core-coverage').textContent = error.message);

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MediBridge.Infrastructure.Monitoring;
 using MediBridge.Infrastructure.Rules;
 using MediBridge.Infrastructure.PriorAuth;
 using MediBridge.Core;
@@ -9,6 +10,7 @@ namespace MediBridge.Infrastructure;
 
 public class ClaimsDbContext(DbContextOptions options) : DbContext(options)
 {
+    public DbSet<EndpointObservation> EndpointObservations => Set<EndpointObservation>();
     public DbSet<RuleSetRecord> RuleSets => Set<RuleSetRecord>();
     public DbSet<RuleControl> RuleControls => Set<RuleControl>();
     public DbSet<RuleActivation> RuleActivations => Set<RuleActivation>();
@@ -25,6 +27,11 @@ public class ClaimsDbContext(DbContextOptions options) : DbContext(options)
 
     protected override void OnModelCreating(ModelBuilder model)
     {
+        var endpoint = model.Entity<EndpointObservation>(); endpoint.HasKey(e => e.Id);
+        endpoint.Property(e => e.Id).HasMaxLength(32); endpoint.Property(e => e.Method).HasMaxLength(16); endpoint.Property(e => e.Route).HasMaxLength(160);
+        endpoint.HasIndex(e => new { e.CompletedAtTicks, e.Method, e.Route });
+        if (Database.IsSqlServer()) endpoint.ToTable("EndpointObservations", t => t.UseSqlOutputClause(false));
+        model.Entity<RuleEvaluationRecord>().HasIndex(e => new { e.ReceivedAtTicks, e.Id });
         var rules = model.Entity<RuleSetRecord>(); rules.HasKey(r => r.Version); rules.Property(r => r.Version).HasMaxLength(32).UseCollation(Database.IsSqlServer() ? "Latin1_General_100_BIN2" : "BINARY"); rules.Property(r => r.ContentHash).HasMaxLength(64);
         var control = model.Entity<RuleControl>(); control.HasKey(r => r.Id); control.Property(r => r.Revision).IsConcurrencyToken(); control.Property(r => r.ShadowVersion).HasMaxLength(32).UseCollation(Database.IsSqlServer() ? "Latin1_General_100_BIN2" : "BINARY");
         control.HasOne<RuleSetRecord>().WithMany().HasForeignKey(r => r.ShadowVersion).OnDelete(DeleteBehavior.Restrict);
@@ -107,7 +114,7 @@ public class ClaimsDbContext(DbContextOptions options) : DbContext(options)
     private void EnforceAudit()
     {
         ChangeTracker.DetectChanges();
-        if (ChangeTracker.Entries().Any(e => e.Entity is RuleSetRecord or RuleActivation or RuleEvaluationRecord && e.State is EntityState.Modified or EntityState.Deleted))
+        if (ChangeTracker.Entries().Any(e => e.Entity is EndpointObservation or RuleSetRecord or RuleActivation or RuleEvaluationRecord && e.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Rule definitions, activations and evaluations are append-only.");
         if (ChangeTracker.Entries<RuleControl>().Any(e => e.State == EntityState.Deleted)) throw new InvalidOperationException("Rule control cannot be deleted.");
         if (ChangeTracker.Entries<PriorAuthEvent>().Any(e => e.State is EntityState.Modified or EntityState.Deleted))
@@ -123,12 +130,12 @@ public class ClaimsDbContext(DbContextOptions options) : DbContext(options)
             if (entry.Entity is OutboxMessage message && entry.State == EntityState.Modified) message.Version = (long)entry.Property("Version").OriginalValue! + 1;
             if (entry.Entity is HandlerReceipt or IdempotencyRecord && entry.State == EntityState.Modified)
                 throw new InvalidOperationException("Committed responses and handler receipts are immutable.");
-            if (entry.Entity is not (OutboxMessage or HandlerReceipt or CorrectionItem or IdempotencyRecord or PriorAuthRecord or RuleSetRecord or RuleControl or RuleActivation or RuleEvaluationRecord)) continue;
+            if (entry.Entity is not (OutboxMessage or HandlerReceipt or CorrectionItem or IdempotencyRecord or PriorAuthRecord or RuleSetRecord or RuleControl or RuleActivation or RuleEvaluationRecord or EndpointObservation)) continue;
             if (entry.State == EntityState.Deleted) throw new InvalidOperationException("Reliability records cannot be deleted.");
             Audit.Add(new AuditEntry
             {
                 Timestamp = DateTime.UtcNow, EntityType = entry.Entity.GetType().Name,
-                EntityId = entry.Entity switch { OutboxMessage m => m.Id, HandlerReceipt r => r.Id, CorrectionItem c => c.ClaimId, IdempotencyRecord r => r.Id, PriorAuthRecord p => p.Id, RuleSetRecord r => r.Version, RuleControl => "registry", RuleActivation r => r.Version, RuleEvaluationRecord r => r.Id, _ => "" },
+                EntityId = entry.Entity switch { OutboxMessage m => m.Id, HandlerReceipt r => r.Id, CorrectionItem c => c.ClaimId, IdempotencyRecord r => r.Id, PriorAuthRecord p => p.Id, RuleSetRecord r => r.Version, RuleControl => "registry", RuleActivation r => r.Version, RuleEvaluationRecord r => r.Id, EndpointObservation e => e.Id, _ => "" },
                 Action = entry.State.ToString(), Detail = entry.Entity is OutboxMessage m2 ? $"{m2.State}; deliveries={m2.Deliveries}; version={m2.Version}" : entry.Entity is RuleControl rc ? $"revision={rc.Revision}; shadow={rc.ShadowVersion ?? "off"}" : entry.Entity is RuleActivation ra ? $"Promoted {ra.Version}; atTicks={ra.ActivatedAtTicks}" : "Durable record saved."
             });
         }

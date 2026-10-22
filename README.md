@@ -1,128 +1,97 @@
-# MediBridge · v0.9.0
+# MediBridge · v0.10.0
 
-Healthcare Claims & Prior Authorization Exception and Recovery Engine. Portfolio simulation on **synthetic data only**. **Not affiliated with any payer.** Never use real PHI, real member IDs, or real payer names or branding. All downstream processing is simulated locally; no healthcare services are called.
+Healthcare Claims & Prior Authorization Exception and Recovery Engine. Portfolio
+simulation on **synthetic data only**. **Not affiliated with any payer.** Never use
+real PHI, real member IDs, or real payer names or branding. Downstream processing is
+simulated; no external healthcare services are called.
 
-Live demo: [MediBridge](https://medibridge-abhi.azurewebsites.net) · [Health](https://medibridge-abhi.azurewebsites.net/health) · [Swagger](https://medibridge-abhi.azurewebsites.net/swagger) · [GitHub](https://github.com/Abhyudaya01/medibridge)
+[Live demo](https://medibridge-abhi.azurewebsites.net/) ·
+[Health](https://medibridge-abhi.azurewebsites.net/health) ·
+[Measured results](benchmarks/RESULTS.md) · [Benchmark guide](benchmarks/README.md)
 
-## Chunk 2a: prior authorization intake
+The public demo has no authentication. Submit fabricated identifiers only. The
+Azure F1 plan has free-tier quotas and may be unavailable or slow to start; a
+successful deployment does not guarantee continuous free-tier availability.
 
-Submit the documented X12 278 request subset or a FHIR R4 `Claim` with `use=preauthorization` through the demo's prior-authorization panel. Both map to a common member/provider/service/priority/submitted-time model and an audited intake timeline. **Accepted means intake validation passed; it is not an authorization decision.** FHIR parsing uses `Hl7.Fhir.R4` in Infrastructure; Core stays independent of frameworks.
+## Features
 
-Prior authorization now includes audited synthetic Approved / Denied / Pended decisions and receipt-based SLA clocks: standard 7 days, expedited 72 hours. The demo SLA board highlights requests at 80% and 100% of the window; pending keeps the clock running. Approval/denial rates and mean/median turnaround come from the append-only PA audit log. See [decision API, denial reasons, metrics definitions, clock injection, and simulation assumptions](docs/prior-auth-decisions.md).
-
-See [the mapping, supported grammar, PAS-shaped FHIR contract, and API behavior](docs/prior-auth-intake.md), [paired synthetic samples](samples/prior-auth/), and [measured parity results](benchmarks/RESULTS.md). Both intake POST routes and the decision POST route require `Idempotency-Key`. Source submitted timestamps normalize to UTC; receipt timestamps remain in the timeline. The local parity harness compares 200 paired cases against independent expected models and outcomes; invalid inputs are tested as well as accepted ones.
-
-```sh
-dotnet run --project benchmarks/parity -c Release
-```
-
-## Chunk 1c: measured chaos and HTTP load
-
-[Benchmark harnesses and measurement definitions](benchmarks/README.md) cover real processing-host kills/restarts against isolated SQLite databases and bounded k6 POST load. The chaos default is 1,000 iterations of 50 synthetic claims, 10% invalid, with 20% probabilistic transient failure injection. A harness-only virtual clock advances lease/backoff deadlines; these results measure correctness under crashes, not production recovery latency. [Measured results](benchmarks/RESULTS.md) link to the actual JSON artifacts. Live load requires separate approval for a temporary B1 window and verified restoration to F1; the exact version and SKU tested are recorded. No benchmark runs automatically from the demo page.
-
-## Chunk 3a: versioned validation and shadow impact
-
-Claim and prior-auth intake validation now uses versioned, effective-dated JSON definitions stored in the database and a deterministic Core evaluator. New receipts pin a promoted effective version; shadow candidates evaluate the same immutable inputs independently. Paired results and definition hashes are appended atomically with intake state. Candidate results and errors do not change live processing or PA outcomes.
-
-The demo's **Rule-change impact** view shows definitions, active/shadow status, promotion controls, and observed flips grouped by provider, distinct procedure/service code, and synthetic plan type. Enable the inactive `candidate-v2` and submit an actual synthetic sample to observe its amount cap while live validation follows the active rules. Nothing is counted until traffic is evaluated.
-
-See [the rule schema, effective-date selection, API, comparison denominator and audit guarantees](docs/versioned-rules.md). `GET /api/rules`, `POST /api/rules`, `POST /api/rules/{version}/shadow`, `GET /api/rules/{version}/shadow-diff`, and `POST /api/rules/{version}/promote` expose the workflow. POSTs require `Idempotency-Key`; control mutations also require the current `expectedRevision`. Initial rules preserve existing behavior. Plan metadata defaults to `Unspecified`; optional labels are `SYN-BASIC` and `SYN-PLUS`.
-
-## Chunk 1b: reliable processing
-
-Validated submissions are now asynchronous (202/PendingProcessing). Durable outbox delivery, five-attempt exponential retry with jitter, a correction queue for non-retryable business rules, idempotent handlers, and crash recovery are implemented. Both POST endpoints require `Idempotency-Key`; exact matching replays return the original response. GET `/api/queues/correction` and `/api/outbox` expose status; the UI shows queues, attempts, and retries.
-
-See [the reliability, migrations, fault injection, and SQL cutover contract](docs/reliable-processing.md). SQLite remains the configuration default; the deployed app uses the free-offer Azure SQL database recorded in `infra/azure.env`, with AutoPause when monthly free limits are exhausted. The old SQLite file is retained; historical data is not copied automatically between providers. Fault injection is off by default.
-
-## Chunk 1a: X12 837P intake
-
-The Upload X12 panel accepts a synthetic file or pasted interchange and shows parsed claims, exact segment/element errors, and a 999-style result. `POST /api/x12/837` consumes `text/plain` and uses each ISA's declared delimiters. Supported segments are ISA/GS/ST, BHT, provider/subscriber NM1, CLM, HI, SV1, DTP, and SE/GE/IEA. This is a documented portfolio subset and acknowledgment simulation, not a complete production 837P/999 implementation.
-
-See [the exact grammar, mappings, error positions, and acknowledgment contract](docs/x12-837p-subset.md) and [five synthetic samples](samples/x12/README.md).
-
-```sh
-curl -i http://localhost:5080/api/x12/837 \
-  -H 'Content-Type: text/plain; charset=utf-8' \
-  -H 'Idempotency-Key: SYN-X12-EXAMPLE-1' \
-  --data-binary @samples/x12/valid.837
-```
-
-Each interchange is validated completely before any of its claims is saved. Accepted claims and their audit events commit atomically with the idempotency response; a rejected interchange makes no claim writes. A storage failure rolls back the HTTP request, including all accepted interchanges. A request may contain multiple interchanges with different delimiters and independent results. HTTP 422 means all interchanges were rejected; 200 means at least one was accepted. A duplicate can receive an Accepted syntax acknowledgment while its claim outcome is Suppressed. Existing claim IDs return DuplicateId without changing history. Raw X12 is not stored; HI diagnoses and source controls are retained in X12Intake audit metadata. No schema change is needed.
-
-## Phase 0 behavior
-
-The demo shows a claims summary, transaction monitor, selectable event timeline, and synthetic claim submission form. Rules are deterministic and return `ruleId`, `field`, and `suggestedFix`. They check required fields, positive two-decimal currency, field bounds, and a 10-digit ASCII NPI with a Luhn check using the `80840` prefix. Member IDs must start with `SYN-`. `0000000006` is a fabricated, checksum-only demo NPI; it is not an assigned provider identity. NPI checks do not query a provider registry or establish real-world eligibility.
-
-Duplicate identity consists of the provider NPI, member ID, service date, and normalized procedure-code set. Code order, duplicate code entries, case, and surrounding code whitespace do not change identity; amount and claim ID are excluded. Pending, processing, succeeded, retry-pending, and manual-review claims reserve an identity. Rejected and suppressed claims do not. A unique database index arbitrates matching submissions, with a process-local write gate and recovery from a competing unique-key insert. Reusing an existing claim ID returns 409 and preserves the original timeline.
-
-The idempotent seed inserts only missing claim IDs; restarting never overwrites claims or adds duplicate seed events:
-
-| Claim | Scenario | Final status | Timeline highlights |
-|---|---|---|---|
-| CLM-1001 | Missing NPI | Rejected | Intake → validation rejection with suggested fix |
-| CLM-1002 | Simulated downstream timeout | Succeeded | Validation → timeout → retry pending → retrying → success |
-| CLM-1003 | Same identity as CLM-1002 | Suppressed | Validation → duplicate suppression |
-| CLM-1004 | Outdated rule version | ManualReview | Validation → rule-version conflict |
-
-`FailureCategory` supports `None`, `Transient`, `BusinessRule`, `Duplicate`, `RuleVersionConflict`, and `Unclassified`. A recovered claim ends with `None`; its transient failure remains in the timeline. Intake events share the supplied UTC timestamp; the dispatcher records actual attempt times and uses durable retry deadlines. The deterministic DownstreamTimeout scenario fails its first real processing attempt, then succeeds on the second.
+- **Claim intake and validation:** JSON and an ISA-delimited X12 837P subset,
+  located segment/element errors, per-interchange 999-style acknowledgments,
+  synthetic member guards and 80840-prefix NPI Luhn validation.
+- **Exception recovery:** failure classification, five-attempt exponential retry
+  with jitter, correction queue for business-rule failures, unique duplicate
+  identity, durable idempotency responses and a transactional outbox with leased,
+  at-least-once dispatch and idempotent handlers.
+- **Prior authorization:** X12 278 and PAS-shaped FHIR R4 Claim intake map into one
+  canonical model. Standard/expedited decision clocks, structured denial reasons,
+  at-risk/breached escalations and audit-derived turnaround/decision metrics.
+- **Versioned rules:** effective-dated DB-backed JSON definitions, immutable hashes
+  and promotion history, isolated shadow evaluation, and impact grouped by
+  provider, procedure/service code and synthetic plan type.
+- **Drift monitoring:** live p-charts per executed rule/version and HTTP endpoint,
+  fixed 20-batch calibration, weighted failure rates, variable-sample 3-sigma
+  limits and flagged monitoring points. Chart.js controls include an accessible
+  table and a separately labeled recorded drift example.
+- **Audit and storage:** EF Core migrations for SQLite and SQL Server; append-only
+  timelines/evaluations and audited state changes. Provider selection is entirely
+  configuration-driven.
+- **Measured verification:** real process-kill chaos, HTTP load, X12/FHIR parity,
+  accelerated SLA, seeded corpus/shadow replay, drift detection and Core line
+  coverage. Raw results and measurement definitions are committed.
+- **Demo and CI:** static HTML, vanilla JS, Swagger, xUnit/WebApplicationFactory,
+  disposable SQL Server integration tests, Coverlet collection and main deployment.
 
 ## Architecture
 
 ```mermaid
-flowchart LR
-    Browser[Static HTML + vanilla JS] --> API[ASP.NET Core minimal API]
-    Swagger[Swagger UI] --> API
-    X12[837P text/plain intake] --> Parser[Core: ISA tokenizer + subset parser]
-    Parser --> Ack[999-style acknowledgment]
-    Parser --> Batch[Infrastructure: atomic interchange import]
-    Batch --> EF
-    API --> Registry[DB: immutable JSON versions and promotion history]
-    Registry --> Evaluator[Core: pure rule evaluator]
-    Evaluator --> Paired[Append-only live and shadow evaluations]
-    Paired --> Impact[Impact by provider, code and synthetic plan]
-    API --> Core[Core: claims and deterministic processor]
-    API --> Store[Infrastructure: ClaimStore]
-    Store --> Core
-    Store --> EF[EF Core transaction]
-    EF --> Claims[(Claims + unique duplicate identity)]
-    EF --> Events[(ClaimEvents + Audit: append-only history)]
-    EF --> Outbox[(Outbox + handler receipts)]
-    EF --> Keys[(Idempotency responses)]
-    Outbox --> Worker[Background dispatcher: leased delivery]
-    Worker --> Core
-    Worker --> EF
-    Config[Configuration] --> Provider{Storage provider}
-    Provider --> SQLite[SQLite by default]
-    Provider --> SQL[SQL Server when ConnectionStrings:Sql is set]
-    SQLite --- EF
-    SQL --- EF
-    PA278[X12 278] --> PAMap[Core: PA subset parser + shared validation]
-    FHIR[FHIR R4 Claim] --> Firely[Infrastructure: Firely R4 adapter]
-    Firely --> PAMap
-    PAMap --> PAStore[PA records + append-only timeline]
-    API --> PAStore
-    PAStore --> EF
-    Clock[Injected IClock] --> SLA[SLA BackgroundService]
-    SLA --> Decisions[Core: SLA and decision rules]
-    API --> Decisions
-    Decisions --> PAStore
-    Reports[Audit-derived metrics] --> PAStore
-    API --> Reports
-    Tests[xUnit + WebApplicationFactory] -. validates .-> API
-    Tests -. validates .-> Core
+flowchart TD
+    UI[Static HTML + vanilla JS + Chart.js] --> API[ASP.NET Core minimal APIs / Swagger]
+    API --> Adapters[837P / 278 / FHIR R4 adapters]
+    Adapters --> Canonical[Core Claim / PriorAuthRequest]
+    API --> Registry[Versioned JSON registry and receipt snapshot]
+    Registry --> Evaluate[Core deterministic live and shadow evaluator]
+    Canonical --> Evaluate
+    Evaluate --> Intake[Infrastructure intake transaction]
+    Intake --> DB[(EF Core: SQLite or SQL Server)]
+    Intake --> Outbox[Transactional outbox / correction queue]
+    Intake --> Keys[Durable idempotency response]
+    Outbox --> Worker[Leased dispatcher + idempotent handler]
+    Worker --> DB
+    API --> PA[Core prior-auth lifecycle + injected clock]
+    PA --> DB
+    DB --> History[Append-only timelines / audit / paired rule traces]
+    API --> HTTP[Best-effort endpoint observation + audit]
+    HTTP --> DB
+    History --> Monitoring[Monitoring aggregation]
+    DB --> Monitoring
+    Monitoring --> Charts[Core p-charts: fixed calibration + 3-sigma limits]
+    Charts --> UI
+    History --> Reports[Audit-derived PA reports / shadow impact]
+    Reports --> UI
+    Harnesses[Local seeded / fault-injection harnesses and Coverlet] --> Artifacts[Measured JSON + RESULTS.md]
+    Artifacts --> UI
 ```
 
-- `src/MediBridge.Api`: HTTP endpoints, dependency composition, startup seed, Swagger, and `wwwroot` demo UI.
-- `src/MediBridge.Core`: domain types, validation, duplicate identity, and deterministic exception/recovery simulation. No framework or third-party dependencies.
-- `src/MediBridge.Infrastructure`: EF Core SQLite/SQL Server providers, atomic claim and audit writes, append-only guards, and idempotent seed.
-- `tests/MediBridge.Tests`: domain, duplicate, concurrency, audit, seed, and endpoint tests. Each API factory uses an isolated temporary SQLite file.
-- `benchmarks/`: local SQLite chaos controller/worker, k6 HTTP load script, measured JSON artifacts, and result ledger.
+| Path | Responsibility |
+|---|---|
+| `src/MediBridge.Api` | Endpoints, DI, workers, endpoint telemetry, Swagger and `wwwroot` |
+| `src/MediBridge.Core` | Framework-free deterministic domain, rules, protocol subset parsing, SLA and p-chart math |
+| `src/MediBridge.Infrastructure` | EF providers/migrations, adapters, transactional persistence, dispatch and monitoring aggregation |
+| `tests/MediBridge.Tests` | Unit, API, persistence, concurrency, migration, recovery and SQL integration tests |
+| `benchmarks/` | Reproducible harnesses, coverage reporter, measured JSON artifacts and ledger |
+| `samples/`, `docs/`, `infra/` | Fabricated examples, detailed contracts and nonsecret deployment configuration |
 
-Claim intake, its outbox/queue state, event timeline, and cached HTTP response commit in one EF transaction. Subsequent worker transitions each append their own audit events. Claim changes without a new audit event, claim deletion, and tracked audit-event modifications/deletions are rejected by the context. SQLite and SQL Server triggers additionally prohibit direct SQL updates/deletes on `ClaimEvents`. These are application integrity controls, not a tamper-proof ledger against database administrators. Use `ClaimsDbContext` for claim writes.
+Claim intake, timeline, rule evaluation, outbox/queue state and cached HTTP response
+commit in the same transaction. Worker transitions append their own audit events.
+EF guards and SQLite/SQL Server triggers prevent updates/deletes to append-only
+history. These controls protect application integrity; they do not make the database
+tamper-proof against administrators. Endpoint observations use a separate audited,
+best-effort write and cannot roll back a committed business transaction.
 
 ## Run locally
 
-Requires the .NET 10 LTS SDK. From the repository root:
+Requires the installed **.NET 10 LTS SDK**. Python 3 is used by result reporters;
+k6 is needed only for HTTP load tests. From the repository root:
 
 ```sh
 dotnet restore
@@ -131,127 +100,134 @@ dotnet test
 dotnet run --project src/MediBridge.Api --no-launch-profile --urls http://localhost:5080
 ```
 
-Open [the demo](http://localhost:5080/), [Swagger](http://localhost:5080/swagger), or [health](http://localhost:5080/health). Health returns `{"status":"ok","version":"0.9.0"}` and is a process liveness endpoint. Startup initializes storage and seeds the four scenarios before serving requests.
+Open [the demo](http://localhost:5080/), [Swagger](http://localhost:5080/swagger), or
+[health](http://localhost:5080/health). Health returns
+`{"status":"ok","version":"0.10.0"}` and measures process liveness, not dependency
+readiness. Startup applies migrations and idempotently seeds four claim scenarios:
+missing NPI, downstream timeout/recovery, suppressed duplicate and rule-version
+manual review. Existing records and timelines are not overwritten.
 
-SQLite defaults to `src/MediBridge.Api/Data/medibridge.db` locally and `/home/data/medibridge.db` on Linux App Service. Override its path with `Database__Path` (configuration key `Database:Path`). Parent directories are created automatically. The database is outside the deployed application directory on Azure and persists across zip deployments when App Service storage is enabled.
+SQLite defaults to `src/MediBridge.Api/Data/medibridge.db` locally and
+`/home/data/medibridge.db` on Linux App Service. Override with `Database__Path`.
+Set `ConnectionStrings__Sql` to select SQL Server/Azure SQL without code changes;
+credentials belong in configuration/environment outside source control. Currency
+uses invariant decimal text so rejected precision survives across providers.
+Known legacy EnsureCreated schemas receive a safe migration baseline (and a SQLite
+backup); unknown schemas fail safely. Migrations do not transfer data between providers.
 
-Set `ConnectionStrings__Sql` (configuration key `ConnectionStrings:Sql`) to use SQL Server/Azure SQL without code changes. Read credentials from environment variables or configuration outside source control. CI tests migrations and processing against a disposable SQL Server instance. Currency is stored as invariant decimal text to preserve rejected precision exactly across providers; the current API does not aggregate amounts in SQL.
-
-Startup now applies provider-specific EF migrations. Known legacy EnsureCreated schemas are baselined without dropping data; unknown schemas fail safely. SQLite receives a legacy backup first. Migration upgrades schemas, not data transfers between providers. There are no delete/reset API endpoints.
+The demo loads Chart.js 4.5.1 from cdnjs with SRI. Its data table remains available
+without the CDN. Recorded benchmark views read the exact committed JSON artifacts;
+they do not run benchmarks or inject failures into the live app.
 
 ## API
 
 | Method | Path | Behavior |
 |---|---|---|
-| GET | `/health` | 200 with status and version 0.9.0 |
-| GET | `/api/claims` | Ordered array of claims and current classification/validation failures |
-| GET | `/api/claims/{id}` | Claim, ordered full timeline, and validation failures; 404 if absent |
-| POST | `/api/claims` | Validate and atomically persist a claim with its timeline |
-| POST | `/api/x12/837` | text/plain subset intake with per-interchange acknowledgment, parsed claims, and import outcomes |
-| POST | `/api/pa/x12-278` | Synthetic 278 subset → canonical PA intake + timeline |
-| POST | `/api/pa/fhir` | PAS-shaped FHIR R4 Claim → same canonical PA intake + timeline |
-| GET | `/api/pa/{id}` | Canonical request, validation outcome and append-only timeline |
-| GET | `/api/queues/correction` | Non-retryable business-rule correction items |
-| GET | `/api/outbox` | Durable delivery states, counts, and scheduling |
-| GET | `/swagger` | Interactive API documentation; schema at `/swagger/v1/swagger.json` |
+| GET | `/health` | Process status and version 0.10.0 |
+| GET | `/api/claims`, `/api/claims/{id}` | Claims and click-through audit timelines |
+| POST | `/api/claims` | JSON claim validation, classification and asynchronous intake |
+| POST | `/api/x12/837` | `text/plain` 837P subset and per-interchange 999-style results |
+| POST | `/api/pa/x12-278`, `/api/pa/fhir` | Canonical prior-auth intake from either format |
+| GET | `/api/pa/{id}` | Canonical request, validation, lifecycle and timeline |
+| POST | `/api/pa/{id}/decisions` | Approved / Denied / Pended; denial requires a defined reason |
+| GET | `/api/reports/prior-auth-metrics` | Approval/denial rates and mean/median turnaround by priority |
+| GET | `/api/queues/correction`, `/api/outbox` | Non-retryable corrections and delivery status |
+| GET / POST | `/api/rules` | List / register immutable rule definitions |
+| POST | `/api/rules/{version}/shadow` | Enable/disable candidate evaluation |
+| GET | `/api/rules/{version}/shadow-diff` | Recorded live/candidate validation flips and group counts |
+| POST | `/api/rules/{version}/promote` | Promote an effective version for new receipts |
+| GET | `/api/monitoring/pcharts` | Live rule and endpoint p-charts, denominators and excluded history |
+| GET | `/swagger` | Interactive API documentation |
 
-Example synthetic submission:
+Intake, decision and rule-mutation POSTs require `Idempotency-Key`. Exact replays
+return the saved response; changing the body under a used key returns 409. Rule
+controls also require `expectedRevision` from `GET /api/rules`. Request bodies are
+bounded to 64 KiB. There are no delete/reset API endpoints.
+
+Example synthetic submission (omit `ruleVersion` to resolve the active version):
 
 ```sh
 curl -i http://localhost:5080/api/claims \
   -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: SYN-JSON-EXAMPLE-1' \
-  -d '{"id":"CLM-DEMO-001","providerNpi":"0000000006","memberId":"SYN-DEMO-NEW","serviceDate":"2026-01-20","procedureCodes":["SYN-PROC-02"],"amount":125.50,"ruleVersion":"phase0-v1","simulation":"None"}'
+  -d '{"id":"CLM-DEMO-001","providerNpi":"0000000006","memberId":"SYN-DEMO-NEW","serviceDate":"2026-01-20","procedureCodes":["SYN-PROC-02"],"amount":125.50,"planType":"SYN-BASIC","simulation":"None"}'
 ```
 
-POST returns `{ "claim": ..., "timeline": [...], "validation": [...] }`. Responses are 202 for queued processing or manual review, 200 for a suppressed duplicate, and 422 for a persisted business-rule rejection. A missing/oversized claim ID or oversized transport fields returns 400 before persistence; malformed JSON/dates also return 400. Reusing a claim ID returns 409 with a `DUPLICATE_ID` failure. Status and failure category are computed by the server. Request bodies are bounded to 64 KiB by Kestrel.
+`0000000006` is a fabricated checksum-only NPI; no provider registry is queried.
+Use a fresh claim ID and idempotency key for each new experiment. Leave NPI blank
+for rejection, use `DownstreamTimeout` for retry/recovery, or explicitly submit an
+outdated rule version for manual review. Matching provider/member/date/code-set
+identity under a fresh ID demonstrates duplicate suppression.
 
-Use a new claim ID for each attempt. Leave NPI blank to try rejection; use `"simulation":"DownstreamTimeout"` for deterministic retry/recovery or `"ruleVersion":"phase0-v0"` for manual review. Reuse the four duplicate-identity components with a new ID to see suppression. This is a public synthetic sandbox without authentication; do not send real information.
+JSON claim responses contain `claim`, `timeline` and `validation`: 202 for queued
+processing or manual review, 200 for duplicate suppression, 422 for persisted
+business-rule rejection, and 400 for malformed/bounded transport fields. ID reuse
+returns 409. HTTP success does not imply downstream completion or authorization.
+
+## Benchmarks
+
+Every measurement is backed by an executed harness, machine-readable JSON and a
+row in [RESULTS.md](benchmarks/RESULTS.md). Results identify their scope and provenance; runtime benchmarks also record their
+environment. Historical runs reflect the version tested. No benchmark runs automatically
+from the demo. Full commands and limits are in [the benchmark guide](benchmarks/README.md).
+
+| Harness | What it measures | Committed measurements |
+|---|---|---|
+| [Chaos](benchmarks/chaos/) | Real local host kills/restarts, duplicate effects and recovery; virtual retry clock | [Ledger](benchmarks/RESULTS.md) · [JSON](benchmarks/results/chaos.json) |
+| [HTTP load](benchmarks/load/) | POST submission latency and requests/second; processing continues asynchronously | [Ledger](benchmarks/RESULTS.md) · [JSON](benchmarks/results/load.json) |
+| [Parity](benchmarks/parity/) | Paired 278/FHIR canonical models and independent expected outcomes | [Ledger](benchmarks/RESULTS.md) · [JSON](benchmarks/results/parity.json) |
+| [SLA](benchmarks/sla/) | Accelerated backlog deadlines, escalations and lead time | [Ledger](benchmarks/RESULTS.md) · [JSON](benchmarks/results/sla.json) |
+| [Generator](benchmarks/generator/) | Seeded synthetic distributions and local SQLite bulk loading | [Ledger](benchmarks/RESULTS.md) · [JSON](benchmarks/results/generator.json) |
+| [Shadow](benchmarks/shadow/) | Local v1/v2 validation flips against independent ground truth | [Ledger](benchmarks/RESULTS.md) · [JSON](benchmarks/results/shadow.json) |
+| [Drift](benchmarks/drift/) | Batches until an alert after a known step, plus stationary false alerts | [Ledger](benchmarks/RESULTS.md) · [JSON](benchmarks/results/drift.json) |
+| [Core coverage](benchmarks/coverage/) | Coverlet executable lines reached by the test suite | [Ledger](benchmarks/RESULTS.md) · [JSON](benchmarks/results/coverage.json) |
+
+The corpus, shadow, drift, parity, SLA and chaos harnesses run locally. Live load
+requires separate approval for a temporary B1 window and confirmed restoration to
+F1; it is not part of normal demo or drift execution. Fault injection is configurable
+and off by default in production. Core line coverage uses the existing Coverlet
+collector and [Core-only settings](coverage.runsettings); see the reporting guide
+for exact commands, exclusions and crash-child-process limitations.
+
+## Detailed contracts
+
+- [837P subset, delimiter handling, located errors and acknowledgments](docs/x12-837p-subset.md) · [samples](samples/x12/README.md)
+- [Idempotency, retries, outbox, crash recovery and storage cutover](docs/reliable-processing.md)
+- [278 / PAS-shaped FHIR intake, canonical mapping and parity](docs/prior-auth-intake.md) · [samples](samples/prior-auth/)
+- [Decision clocks, structured decisions, metrics and SLA simulation](docs/prior-auth-decisions.md)
+- [Versioned JSON rules, shadow isolation, effective dates and impact](docs/versioned-rules.md)
+- [P-chart math, batching, denominator/audit contract and UI](docs/monitoring.md)
 
 ## Azure deployment and CI
 
-App `medibridge-abhi` uses Linux `DOTNETCORE|10.0` on the F1 (Free) plan `plan-medibridge` in `westus`. Resource group `rg-medibridge` remains in `eastus`; `westus` is the approved subscription-policy fallback. Resource metadata is in `infra/azure.env`, which contains no secrets. Free-tier apps can take time to warm up.
+Nonsecret names and region are recorded in [infra/azure.env](infra/azure.env).
+`medibridge-abhi` uses Linux `DOTNETCORE|10.0` on the F1 plan in `westus`; resource
+group `rg-medibridge` remains in `eastus`. The configured free-offer Azure SQL
+connection is held only in App Service configuration. SQLite remains the default
+when that connection is absent. Neither free-tier quota exhaustion nor SQL free-limit
+AutoPause is a signal to silently upgrade resources.
 
-`.github/workflows/deploy.yml` restores, builds, and tests on pull requests. A push to `main` also publishes `src/MediBridge.Api` and deploys through `azure/webapps-deploy@v3`, reading `AZURE_APP_NAME` from `infra/azure.env`. Deployments are serialized. The publishing profile is held only in the repository secret `AZURE_WEBAPP_PUBLISH_PROFILE`; it is never committed or logged. SCM basic publishing is enabled for this flow, and App Service storage is enabled for `/home/data`.
-
-To rotate the secret from an authenticated Azure CLI and GitHub CLI session without printing its contents:
+[The workflow](.github/workflows/deploy.yml) restores/builds/tests PRs, including a
+disposable SQL Server integration test, Core Coverlet collection and reporter tests.
+Main also publishes the API and deploys with `azure/webapps-deploy@v3`. The app name
+comes from `infra/azure.env`; the publishing profile is held only in GitHub secret
+`AZURE_WEBAPP_PUBLISH_PROFILE`. PR revisions use separate concurrency groups; main
+deployments remain serialized. SCM basic publishing is enabled for this flow.
+Never print publishing profiles or connection strings.
 
 ```sh
-set -e
-profile_path=$(mktemp)
-chmod 600 "$profile_path"
-trap 'rm -f "$profile_path"' EXIT
-az webapp deployment list-publishing-profiles -g rg-medibridge -n medibridge-abhi --xml > "$profile_path"
-gh secret set AZURE_WEBAPP_PUBLISH_PROFILE < "$profile_path"
-rm -f "$profile_path"
-trap - EXIT
+gh run list --workflow deploy.yml --branch main
+gh run watch RUN_ID --exit-status
+curl --fail https://medibridge-abhi.azurewebsites.net/health
 ```
-
-PR revisions use separate concurrency groups so newer validation can proceed independently; deployments on main remain serialized.
-
-Watch a deployment with `gh run list --workflow deploy.yml`, then `gh run watch <run-id> --exit-status`. Verify the running version with `curl --fail https://medibridge-abhi.azurewebsites.net/health`.
 
 ## Roadmap
 
-- **Phase 0 (implemented):** synthetic claim domain, validation/classification, deterministic recovery scenarios, append-only timelines, EF persistence, demo monitor, tests, and CI deployment.
-- **Chunk 1a (implemented):** ISA-delimited 837P subset intake, located errors, 999-style results, atomic imports, five sample files, and Upload X12 demo panel.
-- **Chunk 1b (implemented):** durable idempotency, outbox/receipts, bounded retries, correction queue, fault injection, dual-provider migrations, and free-offer Azure SQL.
-- **Chunk 1c (implemented):** measured chaos/recovery and HTTP load harnesses; results include test environment and limitations.
-- **Phase 1 (next):** richer exception and recovery workflows on the validation/audit/intake foundation.
-- **Chunk 3b (implemented):** reproducible 250,000-claim SQLite corpus, independently checked local shadow replay, measured artifacts and a recorded benchmark view.
-- **Chunk 3a (implemented):** DB-backed effective-dated JSON validation, isolated shadow comparisons, audited promotion, and rule-change impact view.
-- **Chunk 2b (implemented):** Receipt-based SLA clocks, structured review decisions, audit-derived metrics, SLA board, and measured 10,000-request accelerated backlog simulation.
-- **Chunk 2a (implemented):** X12 278 / FHIR R4 prior-authorization intake, canonical mapping, audit timelines, paired samples, and measured parity.
-- **Phase 2 (next):** expanded synthetic authorization review, versioned rules, and decision workflows.
-- **Phase 3:** versioned rule evaluation and shadow impact, plus a seeded 250,000-claim local SQLite corpus and independently checked shadow replay. Every harness run must produce `benchmarks/results/*.json` and a row in `benchmarks/RESULTS.md`; never hardcode or fabricate results.
+- **Phase 0 complete:** synthetic claim foundation, validation, timelines, storage and demo.
+- **Phase 1 complete:** 837P intake, durable recovery/idempotency/outbox, dual providers and measured chaos/load.
+- **Phase 2 complete:** 278/FHIR prior authorization, decision clocks, escalations and measured parity/SLA.
+- **Phase 3 complete through chunk 3c:** versioned/shadow rules, seeded corpus/replay, p-chart drift monitoring, measured coverage and benchmark documentation.
 
-### Prior authorization review and reports
-
-```sh
-curl -X POST http://localhost:5080/api/pa/PA-SYN-SAMPLE/decisions \
-  -H 'Content-Type: application/json' -H 'Idempotency-Key: SYN-DECISION-1' \
-  -d '{"decision":"Denied","reasonCode":"MissingDocumentation"}'
-curl http://localhost:5080/api/pa
-curl http://localhost:5080/api/reports/prior-auth-metrics
-dotnet run --project benchmarks/sla -c Release
-```
-
-Submit a new synthetic intake first using the demo or the documented 278/FHIR samples. The review controls, SLA board and metrics panel are available on the same landing page. Final decisions are terminal. These are simulation windows and reviewer-entered outcomes, not clinical or coverage recommendations.
-
-### Try shadow rules locally
-
-```sh
-curl http://localhost:5080/api/rules
-# Use the actual revision returned above.
-curl -X POST http://localhost:5080/api/rules/candidate-v2/shadow \
-  -H 'Content-Type: application/json' -H 'Idempotency-Key: SYN-SHADOW-ENABLE-1' \
-  -d '{"enabled":true,"expectedRevision":0}'
-curl http://localhost:5080/api/rules/candidate-v2/shadow-diff
-```
-
-Use the demo's **Submit synthetic impact sample** button to record real comparison observations. Omit `ruleVersion` on JSON claims to resolve the active version at receipt; an explicit mismatched version still requires manual review. Effective dates use receipt time, and previous transactions remain pinned to their saved evaluations.
-
-
-## Local synthetic corpus and shadow replay
-
-Chunk 3b adds [a seeded generator](benchmarks/generator/README.md) and
-[a local shadow replay harness](benchmarks/shadow/README.md). The generator bulk-loads
-250,000 fabricated claims into an ignored SQLite database with documented weighted
-provider, procedure, plan and amount distributions and exactly 8% invalid inputs.
-The replay uses the production Core evaluator for `phase0-v1` and a separate
-`benchmark-v2` with a known SYN-PLUS amount limit. It checks each pair of verdicts
-against an independent oracle, including invalid claims that stay rejected.
-
-```sh
-dotnet run --project benchmarks/generator -c Release
-dotnet run --project benchmarks/shadow -c Release
-```
-
-Both commands run locally and write measured JSON plus rows in
-[the results ledger](benchmarks/RESULTS.md). The database is isolated from application
-storage; the experiment does not call Azure, promote a rule, or measure API capacity.
-Choose a fresh `--database path.db` when generating another corpus. The replay can
-append multiple runs to an existing corpus. [Measurement details](benchmarks/shadow/README.md)
-explain flip detection, false positives/negatives, source hashes and runtime scope.
-The demo reads the committed shadow JSON at `/benchmarks/shadow.json`; publishing
-includes that exact artifact, so displayed numbers are never embedded constants.
+Follow [AGENTS.md](AGENTS.md) for new chunks: branch from current main, obtain plan
+approval, implement/test, bump the minor version, update docs/UI, and deliver through
+PR checks, squash merge and live deployment verification.

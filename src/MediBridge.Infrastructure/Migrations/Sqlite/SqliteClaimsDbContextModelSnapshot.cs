@@ -239,6 +239,44 @@ namespace MediBridge.Infrastructure.Migrations.Sqlite
                     b.ToTable("Idempotency");
                 });
 
+            modelBuilder.Entity("MediBridge.Infrastructure.Monitoring.EndpointObservation", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Aborted")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CompletedAtTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Exception")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Replayed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Route")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("StatusCode")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompletedAtTicks", "Method", "Route");
+
+                    b.ToTable("EndpointObservations");
+                });
+
             modelBuilder.Entity("MediBridge.Infrastructure.OutboxMessage", b =>
                 {
                     b.Property<string>("Id")
@@ -490,6 +528,8 @@ namespace MediBridge.Infrastructure.Migrations.Sqlite
                     b.HasKey("Id");
 
                     b.HasIndex("CandidateVersion", "ReceivedAtTicks");
+
+                    b.HasIndex("ReceivedAtTicks", "Id");
 
                     b.ToTable("RuleEvaluations");
                 });

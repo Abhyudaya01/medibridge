@@ -10,7 +10,7 @@ public sealed record RuleClause(string Domain, string Id, string Field, string O
     int? MinLength = null, int? MaxLength = null, int? Length = null, int? MaxCount = null,
     decimal? Min = null, decimal? Max = null, int? Scale = null, string? Prefix = null,
     string? Alphabet = null, IReadOnlyList<string>? Values = null, string? When = null, IReadOnlyList<string>? PlanTypes = null);
-public sealed record RuleResult(string Version, IReadOnlyList<ValidationFailure> Failures, string? Error = null)
+public sealed record RuleResult(string Version, IReadOnlyList<ValidationFailure> Failures, string? Error = null, IReadOnlyList<string>? EvaluatedRuleIds = null)
 {
     public string Outcome => Error is not null ? "Error" : Failures.Count == 0 ? "Accepted" : "Rejected";
 }
@@ -109,12 +109,14 @@ public static class RuleEvaluator
     public static RuleResult Evaluate(RuleDefinition definition, RuleInput input)
     {
         List<ValidationFailure> failures = [];
+        List<string> evaluated = [];
         foreach (var rule in definition.Rules.Where(r => r.Domain == input.Domain))
         {
             if (rule.PlanTypes is not null && !rule.PlanTypes.Contains(input.PlanType, StringComparer.Ordinal)) continue;
             var text = input.Text(rule.Field);
             if (rule.When == "Present" && string.IsNullOrWhiteSpace(text) || rule.When == "Digits10" && !Digits(text, 10)
                 || rule.When == "CodesPresent" && (input.Codes.Count == 0 || input.Codes.Any(string.IsNullOrWhiteSpace))) continue;
+            evaluated.Add(rule.Id);
             var valid = rule.Operator switch
             {
                 "Required" => !string.IsNullOrWhiteSpace(text),
@@ -133,7 +135,7 @@ public static class RuleEvaluator
             };
             if (!valid) failures.Add(new(rule.Id, rule.Field, rule.Fix));
         }
-        return new(definition.Version, failures.AsReadOnly());
+        return new(definition.Version, failures.AsReadOnly(), EvaluatedRuleIds: evaluated.AsReadOnly());
     }
     private static bool Digits(string text, int length) => text.Length == length && text.All(char.IsAsciiDigit);
     private static bool Shape(string text, RuleClause rule) => (rule.MinLength is null || text.Length >= rule.MinLength)

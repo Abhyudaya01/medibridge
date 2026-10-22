@@ -6,12 +6,13 @@
   <meta name="description" content="MediBridge synthetic healthcare claims and prior authorization exception and recovery simulation.">
   <title>MediBridge | Transaction Monitor</title>
   <link rel="stylesheet" href="/styles.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js" integrity="sha512-WoViKhKD4qI2WruSZqv9+kvM4WfFhUMQCLN4QlDTt5aU56fLQy2gYoxWIqlEnXqJy/+Ac5q/hk1oWfqnMDhwMA==" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
   <main>
     <header>
-      <div class="brand"><span class="mark" aria-hidden="true">M</span><div><p class="eyebrow">Exception &amp; recovery engine</p><h1>MediBridge</h1></div><span class="version">v0.9.0</span></div>
+      <div class="brand"><span class="mark" aria-hidden="true">M</span><div><p class="eyebrow">Exception &amp; recovery engine</p><h1>MediBridge</h1></div><span class="version">v0.10.0</span></div>
       <p class="description">A healthcare claims and prior authorization exception and recovery engine on synthetic data. Explore deterministic claim validation, simulated downstream recovery, duplicate suppression, and rule-version review through an auditable transaction timeline.</p>
       <p class="notice"><strong>Synthetic data. Not affiliated with any payer.</strong> Use fabricated identifiers only. No external healthcare services are called.</p>
       <nav aria-label="Project links"><a href="/health">API health</a><a href="/swagger">Swagger API</a><a href="https://github.com/Abhyudaya01/medibridge">GitHub repository</a></nav>
@@ -126,6 +127,25 @@
         <div><h3>By synthetic plan type</h3><div class="table-scroll"><table><caption class="sr-only">Validation flips by plan type</caption><thead><tr><th>Domain / plan</th><th>Compared</th><th>Accept → reject</th><th>Reject → accept</th></tr></thead><tbody id="rules-plan"></tbody></table></div></div>
       </div>
     </section>
+    <section class="panel" aria-labelledby="monitoring-title">
+      <h2 id="monitoring-title">Failure-rate control charts</h2>
+      <p>Five-minute UTC batches with a fixed, weighted baseline from the first 20 completed nonempty batches. Three-sigma limits adapt to each batch's opportunity count. Red points flag monitoring alerts; gray points show calibration.</p>
+      <div class="rule-controls">
+        <label>Data source<select id="monitor-source"><option value="recorded">Recorded local drift benchmark</option><option value="live">Live audit observations</option></select></label>
+        <label>Series<select id="monitor-series" aria-label="Control chart series"></select></label>
+        <button type="button" id="monitor-refresh">Refresh chart</button>
+      </div>
+      <p id="monitor-status" role="status" aria-live="polite"></p>
+      <p id="monitor-detail" class="muted"></p>
+      <div class="control-chart"><canvas id="monitor-chart" role="img" aria-label="Failure-rate p-chart with center line, three-sigma limits and alert points. Exact values appear in the table below."></canvas></div>
+      <div class="table-scroll monitoring-table"><table>
+        <caption>Control chart batch values · UTC · limits and rates as percentages</caption>
+        <thead><tr><th scope="col">Batch start</th><th scope="col">Opportunities</th><th scope="col">Failures</th><th scope="col">Rate</th><th scope="col">Lower limit</th><th scope="col">Center</th><th scope="col">Upper limit</th><th scope="col">Signal</th></tr></thead>
+        <tbody id="monitor-points"></tbody>
+      </table></div>
+      <p class="muted">Live rules count actual executions, not conditional skips or idempotent replays. Endpoint charts count HTTP attempts, including replays. Low expected counts weaken the normal approximation and are identified in the table. These charts flag statistical variation, not clinical risk.</p>
+      <p><a href="/api/monitoring/pcharts">Live chart JSON</a> · <a href="/benchmarks/drift.json">Recorded drift JSON</a> · <a href="https://github.com/Abhyudaya01/medibridge/blob/main/docs/monitoring.md">Chart definitions and denominator contract</a></p>
+    </section>
     <section class="panel" aria-labelledby="benchmarks-title">
       <h2 id="benchmarks-title">Reliability measurements</h2>
       <p>Explore measured crash recovery and HTTP submission load using fabricated claims. Local chaos checks kill and restart the processing host; a virtual clock advances retry deadlines. Load latency measures claim acceptance, with processing continuing asynchronously.</p>
@@ -140,11 +160,12 @@
         <article><p>Local replay wall time</p><strong id="shadow-benchmark-runtime">—</strong></article>
       </div>
       <p id="shadow-benchmark-detail" class="muted"></p>
+      <p id="core-coverage" class="muted">Loading recorded Core line coverage…</p>
       <p><a href="/benchmarks/shadow.json">Recorded shadow JSON</a> · <a href="https://github.com/Abhyudaya01/medibridge/blob/main/benchmarks/shadow/README.md">Workload, oracle and runtime definitions</a></p>
       <p class="muted">Benchmark runs are separate from this demo. Live load requires approval for a temporary B1 window and verified restoration to F1.</p>
     </section>
     <section aria-labelledby="roadmap-title"><h2 id="roadmap-title">Roadmap</h2><ol class="roadmap"><li><strong>Phase 1</strong><h3>Recovery workflows</h3><p>Extend the Phase 0 validation and audit foundation with richer exception handling.</p></li><li><strong>Phase 2</strong><h3>Prior authorization</h3><p>Intake X12 278 and FHIR R4 requests, record review decisions, and monitor audited SLA clocks.</p></li><li><strong>Phase 3</strong><h3>Reliability &amp; measurement</h3><p>Version validation rules, inspect shadow impact, and expand the measured reliability foundation.</p></li></ol></section>
-    <footer>Portfolio simulation · Synthetic records only · Chunk 3b: synthetic corpus &amp; measured shadow replay</footer>
+    <footer>Portfolio simulation · Synthetic records only · Chunk 3c: drift monitoring &amp; measured Core coverage</footer>
   </main>
 </body>
 </html>
