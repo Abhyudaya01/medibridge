@@ -11,7 +11,7 @@
 <body>
   <main>
     <header>
-      <div class="brand"><span class="mark" aria-hidden="true">M</span><div><p class="eyebrow">Exception &amp; recovery engine</p><h1>MediBridge</h1></div><span class="version">v0.7.0</span></div>
+      <div class="brand"><span class="mark" aria-hidden="true">M</span><div><p class="eyebrow">Exception &amp; recovery engine</p><h1>MediBridge</h1></div><span class="version">v0.8.0</span></div>
       <p class="description">A healthcare claims and prior authorization exception and recovery engine on synthetic data. Explore deterministic claim validation, simulated downstream recovery, duplicate suppression, and rule-version review through an auditable transaction timeline.</p>
       <p class="notice"><strong>Synthetic data. Not affiliated with any payer.</strong> Use fabricated identifiers only. No external healthcare services are called.</p>
       <nav aria-label="Project links"><a href="/health">API health</a><a href="/swagger">Swagger API</a><a href="https://github.com/Abhyudaya01/medibridge">GitHub repository</a></nav>
@@ -47,6 +47,7 @@
       <h2 id="x12-title">Upload X12</h2>
       <p class="muted">Choose a synthetic .837 or text file, or paste an interchange below. Acceptance checks the documented subset; the 999-style result is a portfolio simulation.</p>
       <form id="x12-form">
+        <label>Synthetic plan type<select id="x12-plan-type"><option>Unspecified</option><option>SYN-BASIC</option><option>SYN-PLUS</option></select></label>
         <label>Synthetic X12 file<input id="x12-file" type="file" accept=".837,.edi,.txt,text/plain"></label>
         <label>X12 interchange<textarea id="x12-text" rows="8" spellcheck="false" placeholder="ISA…" required aria-describedby="x12-help"></textarea></label>
         <p id="x12-help" class="muted">Maximum 64 KiB. ISA declares delimiters. Use test indicator T and fabricated SYN- member IDs. Parsing is complete before accepted claims are imported.</p>
@@ -66,7 +67,8 @@
           <label>Service date<input name="serviceDate" type="date" value="2026-01-20" required></label>
           <label>Procedure codes<input name="procedureCodes" value="SYN-PROC-02" required><small>Comma-separated fabricated codes.</small></label>
           <label>Amount ($)<input name="amount" type="number" value="125.50" step="0.01" min="0.01" required></label>
-          <label>Rule version<select name="ruleVersion"><option value="phase0-v1">phase0-v1 · current</option><option value="phase0-v0">phase0-v0 · conflict</option></select></label>
+          <label>Rule version<select name="ruleVersion"><option value="">Active version at receipt</option><option value="phase0-v1">phase0-v1 · explicit</option><option value="phase0-v0">phase0-v0 · conflict</option></select></label>
+          <label>Synthetic plan type<select name="planType"><option>Unspecified</option><option>SYN-BASIC</option><option>SYN-PLUS</option></select></label>
           <label>Downstream simulation<select name="simulation"><option value="None">Success</option><option value="DownstreamTimeout">Timeout → retry → success</option></select></label>
         </div>
         <button id="submit-button" class="primary" type="submit">Validate &amp; process claim</button>
@@ -78,6 +80,7 @@
       <h2 id="pa-title">Submit a prior authorization request</h2>
       <p class="muted">Submit the documented X12 278 or FHIR R4 Claim subset and compare the canonical view. Accepted means intake validation passed; it is not authorization approval.</p>
       <form id="pa-form">
+        <label>Synthetic plan type<select id="pa-plan-type"><option>Unspecified</option><option>SYN-BASIC</option><option>SYN-PLUS</option></select></label>
         <label>Format<select id="pa-format"><option value="x12-278">X12 278 · text/plain</option><option value="fhir">FHIR R4 Claim · application/fhir+json</option></select></label>
         <button id="pa-sample" type="button">Load new synthetic sample</button>
         <label>Request payload<textarea id="pa-text" rows="12" spellcheck="false" required aria-describedby="pa-help"></textarea></label>
@@ -106,14 +109,31 @@
       <div class="table-scroll"><table><caption class="sr-only">Prior authorization metrics by priority</caption><thead><tr><th>Priority</th><th>Received / finalized</th><th>Approval rate</th><th>Denial rate</th><th>Mean turnaround (h)</th><th>Median turnaround (h)</th></tr></thead><tbody id="pa-metrics-rows"></tbody></table></div>
       <p id="pa-metrics-asof" class="muted"></p>
     </section>
+    <section class="panel" aria-labelledby="rules-title">
+      <div class="section-heading"><div><p class="eyebrow">Versioned validation · measured traffic</p><h2 id="rules-title">Rule-change impact</h2></div><button id="rules-refresh" type="button">Refresh rules &amp; impact</button></div>
+      <p class="muted">Shadow compares a candidate with the live rules using the same input. Candidate verdicts are observations; live processing follows the active rules. Promotion applies a version to new receipts within its UTC effective window.</p>
+      <p id="rules-active"></p>
+      <div class="rule-controls"><label>Rule version<select id="rules-version"></select></label><button id="rules-enable" type="button">Enable shadow</button><button id="rules-disable" type="button">Disable shadow</button><button id="rules-promote" type="button">Promote selected version</button></div>
+      <details><summary>Selected definition, hash &amp; effective dates</summary><p id="rules-definition-meta" class="muted"></p><pre id="rules-definition"></pre></details>
+      <div class="rule-controls"><label>Sample plan<select id="rules-sample-plan"><option>SYN-BASIC</option><option>SYN-PLUS</option><option>Unspecified</option></select></label><button id="rules-sample" type="button">Submit synthetic impact sample</button></div>
+      <p class="muted">The sample submits one new claim for 150 with fabricated identifiers. The seeded candidate caps amounts at 100. Counts below come from stored evaluations of actual submissions.</p>
+      <p id="rules-status" role="status" aria-live="polite"></p>
+      <div class="summary"><article><p>Compared transactions</p><strong id="rules-compared">—</strong></article><article><p>Outcome flips</p><strong id="rules-flipped">—</strong></article><article><p>Accept → reject</p><strong id="rules-to-reject">—</strong></article><article><p>Reject → accept</p><strong id="rules-to-accept">—</strong></article></div>
+      <p id="rules-diff-note" class="muted"></p>
+      <div class="rule-impact-grid">
+        <div><h3>By provider</h3><div class="table-scroll"><table><caption class="sr-only">Validation flips by provider</caption><thead><tr><th>Domain / provider</th><th>Compared</th><th>Accept → reject</th><th>Reject → accept</th></tr></thead><tbody id="rules-provider"></tbody></table></div></div>
+        <div><h3>By procedure / service code</h3><div class="table-scroll"><table><caption class="sr-only">Validation flips by code</caption><thead><tr><th>Domain / code</th><th>Compared</th><th>Accept → reject</th><th>Reject → accept</th></tr></thead><tbody id="rules-code"></tbody></table></div></div>
+        <div><h3>By synthetic plan type</h3><div class="table-scroll"><table><caption class="sr-only">Validation flips by plan type</caption><thead><tr><th>Domain / plan</th><th>Compared</th><th>Accept → reject</th><th>Reject → accept</th></tr></thead><tbody id="rules-plan"></tbody></table></div></div>
+      </div>
+    </section>
     <section class="panel" aria-labelledby="benchmarks-title">
       <h2 id="benchmarks-title">Reliability measurements</h2>
       <p>Explore measured crash recovery and HTTP submission load using fabricated claims. Local chaos checks kill and restart the processing host; a virtual clock advances retry deadlines. Load latency measures claim acceptance, with processing continuing asynchronously.</p>
       <p><a href="https://github.com/Abhyudaya01/medibridge/blob/main/benchmarks/RESULTS.md">Measured results and test environment</a> · <a href="https://github.com/Abhyudaya01/medibridge/blob/main/benchmarks/README.md">Run the harnesses</a></p>
       <p class="muted">Benchmark runs are separate from this demo. Live load requires approval for a temporary B1 window and verified restoration to F1.</p>
     </section>
-    <section aria-labelledby="roadmap-title"><h2 id="roadmap-title">Roadmap</h2><ol class="roadmap"><li><strong>Phase 1</strong><h3>Recovery workflows</h3><p>Extend the Phase 0 validation and audit foundation with richer exception handling.</p></li><li><strong>Phase 2</strong><h3>Prior authorization</h3><p>Intake X12 278 and FHIR R4 requests, record review decisions, and monitor audited SLA clocks.</p></li><li><strong>Phase 3</strong><h3>Reliability &amp; measurement</h3><p>Expand workload coverage using the measured chaos and load foundation.</p></li></ol></section>
-    <footer>Portfolio simulation · Synthetic records only · Chunk 2b: prior authorization decisions &amp; SLA clocks</footer>
+    <section aria-labelledby="roadmap-title"><h2 id="roadmap-title">Roadmap</h2><ol class="roadmap"><li><strong>Phase 1</strong><h3>Recovery workflows</h3><p>Extend the Phase 0 validation and audit foundation with richer exception handling.</p></li><li><strong>Phase 2</strong><h3>Prior authorization</h3><p>Intake X12 278 and FHIR R4 requests, record review decisions, and monitor audited SLA clocks.</p></li><li><strong>Phase 3</strong><h3>Reliability &amp; measurement</h3><p>Version validation rules, inspect shadow impact, and expand the measured reliability foundation.</p></li></ol></section>
+    <footer>Portfolio simulation · Synthetic records only · Chunk 3a: versioned validation &amp; shadow impact</footer>
   </main>
 </body>
 </html>

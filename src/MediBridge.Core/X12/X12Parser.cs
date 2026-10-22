@@ -4,9 +4,9 @@ namespace MediBridge.Core.X12;
 
 public static class X12Parser
 {
-    public static IReadOnlyList<X12Interchange> Parse(string input) => X12Tokenizer.Tokenize(input).Select(tokens => new Reader(tokens).Read()).ToArray();
+    public static IReadOnlyList<X12Interchange> Parse(string input, bool validateDomain = true) => X12Tokenizer.Tokenize(input).Select(tokens => new Reader(tokens, validateDomain).Read()).ToArray();
 
-    private sealed class Reader(X12Tokens tokens)
+    private sealed class Reader(X12Tokens tokens, bool validateDomain)
     {
         private readonly List<X12Error> _errors = [.. tokens.Errors];
         private readonly List<X12ParsedClaim> _claims = [];
@@ -109,15 +109,15 @@ public static class X12Parser
             Count(segment, 9, 9);
             if (segment.Element(1) == "85")
             {
-                Expect(segment, 2, "2"); Required(segment, 3); Expect(segment, 8, "XX"); Required(segment, 9);
-                if (!ClaimRules.HasValidNpiChecksum(segment.Element(9))) Error(segment, 9, "Billing provider requires a 10-digit synthetic NPI with a valid 80840-prefixed Luhn checksum.");
+                Expect(segment, 2, "2"); Required(segment, 3); Expect(segment, 8, "XX"); if (validateDomain) Required(segment, 9);
+                if (validateDomain && !ClaimRules.HasValidNpiChecksum(segment.Element(9))) Error(segment, 9, "Billing provider requires a 10-digit synthetic NPI with a valid 80840-prefixed Luhn checksum.");
                 _provider = segment; _subscriber = null;
             }
             else if (segment.Element(1) == "IL")
             {
                 if (_provider is null) Error(segment, 1, "Billing provider NM1*85 must precede subscriber NM1*IL.");
-                Expect(segment, 2, "1"); Required(segment, 3); Expect(segment, 8, "MI"); Required(segment, 9);
-                if (!segment.Element(9).StartsWith("SYN-", StringComparison.Ordinal) || segment.Element(9).Length > 64)
+                Expect(segment, 2, "1"); Required(segment, 3); Expect(segment, 8, "MI"); if (validateDomain) Required(segment, 9);
+                if (validateDomain && (!segment.Element(9).StartsWith("SYN-", StringComparison.Ordinal) || segment.Element(9).Length > 64))
                     Error(segment, 9, "Use a fabricated member ID beginning SYN-, at most 64 characters.");
                 _subscriber = segment;
             }
@@ -205,7 +205,7 @@ public static class X12Parser
             var total = draft.Services.Sum(service => service.Charge);
             if (total != draft.Claim.Amount) Error(draft.Source, 2, "CLM02 must equal the sum of SV102 line charges; SV102 is already the extended line charge.");
             draft.Claim.ServiceDate = draft.Date ?? default;
-            foreach (var failure in ClaimRules.Validate(draft.Claim))
+            foreach (var failure in validateDomain ? ClaimRules.Validate(draft.Claim) : [])
             {
                 var (source, element) = failure.Field switch
                 {
@@ -217,7 +217,16 @@ public static class X12Parser
                 };
                 Error(source, element, $"{failure.RuleId}: {failure.SuggestedFix}");
             }
-            _claims.Add(new(draft.Claim, draft.Diagnoses, draft.Source.Position, draft.GroupControl, draft.TransactionControl));
+            _claims.Add(new(draft.Claim, draft.Diagnoses, draft.Source.Position, draft.GroupControl, draft.TransactionControl,
+                new Dictionary<string, X12FieldLocation>
+                {
+                    ["Id"] = Location(draft.Source, 1), ["Amount"] = Location(draft.Source, 2),
+                    ["ProviderNpi"] = Location(draft.Provider ?? draft.Source, draft.Provider is null ? 0 : 9),
+                    ["MemberId"] = Location(draft.Subscriber ?? draft.Source, draft.Subscriber is null ? 0 : 9),
+                    ["ServiceDate"] = Location(draft.DateSource ?? draft.Source, draft.DateSource is null ? 0 : 3),
+                    ["ProcedureCodes"] = Location(draft.Source, 0)
+                }));
+            static X12FieldLocation Location(X12Segment segment, int element) => new(segment.Id, segment.Position, element);
             _claim = null;
         }
 

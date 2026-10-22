@@ -17,7 +17,8 @@ public sealed record X12Segment(string Id, int Position, string[] Elements)
 public sealed record X12Tokens(X12Delimiters Delimiters, IReadOnlyList<X12Segment> Segments, IReadOnlyList<X12Error> Errors);
 public sealed record X12Transaction(string GroupControlNumber, string ControlNumber, int SegmentPosition);
 public sealed record X12ParsedClaim(Claim Claim, IReadOnlyList<string> DiagnosisCodes, int SegmentPosition,
-    string GroupControlNumber, string TransactionControlNumber);
+    string GroupControlNumber, string TransactionControlNumber, IReadOnlyDictionary<string, X12FieldLocation>? Locations = null);
+public sealed record X12FieldLocation(string SegmentId, int SegmentPosition, int ElementPosition);
 public sealed record X12Interchange(string? ControlNumber, X12Delimiters Delimiters,
     IReadOnlyList<X12Transaction> Transactions, IReadOnlyList<X12ParsedClaim> Claims, IReadOnlyList<X12Error> Errors)
 {

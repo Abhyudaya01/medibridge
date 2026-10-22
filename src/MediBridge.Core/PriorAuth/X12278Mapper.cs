@@ -5,7 +5,7 @@ namespace MediBridge.Core.PriorAuth;
 
 public static class X12278Mapper
 {
-    public static PriorAuthMapping Map(string input)
+    public static PriorAuthMapping Map(string input, MediBridge.Core.Rules.RuleDefinition? definition = null, string planType = "Unspecified")
     {
         if (input.Length > 65_536) return new(null, [new("PA_X12_LIMIT", "Input", "Input exceeds 64 KiB.")]);
         var interchanges = X12Tokenizer.Tokenize(input);
@@ -71,7 +71,7 @@ public static class X12278Mapper
         DateTimeOffset? submitted = DateTimeOffset.TryParseExact(bht.Element(4) + bht.Element(5), "yyyyMMddHHmmss", CultureInfo.InvariantCulture,
             DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var date) ? date : null;
         var canonical = PriorAuthRules.Normalize(new(bht.Element(3), member.Element(9), provider.Element(9), codes, PriorAuthRules.LevelOfService(um.Element(6)), submitted));
-        errors.AddRange(PriorAuthRules.Validate(canonical).Select(error => error.Field switch
+        errors.AddRange(MediBridge.Core.Rules.RuleEvaluator.Evaluate(definition ?? MediBridge.Core.Rules.RuleCatalog.Baseline, MediBridge.Core.Rules.RuleInput.From(canonical, planType)).Failures.Select(f => new PriorAuthError(f.RuleId, f.Field, f.SuggestedFix)).Select(error => error.Field switch
         {
             "Id" => Locate(error, bht, 3), "MemberId" => Locate(error, member, 9), "RequestingProviderNpi" => Locate(error, provider, 9),
             "Priority" => Locate(error, um, 6), "SubmittedAt" => Locate(error, bht, 4),

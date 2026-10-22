@@ -11,6 +11,7 @@ public sealed class Claim
     public string MemberId { get; set; } = "";
     public DateOnly ServiceDate { get; set; }
     public List<string> ProcedureCodes { get; set; } = [];
+    public string PlanType { get; set; } = "Unspecified";
     public decimal Amount { get; set; }
     public int AttemptCount { get; set; }
     public int RetryCount => Math.Max(0, AttemptCount - 1);

@@ -33,11 +33,18 @@ public static class PriorAuthJson
 }
 public sealed class PriorAuthStore(ClaimsDbContext db)
 {
-    public async Task<PriorAuthResponse?> SubmitAsync(PriorAuthMapping mapping, string format, DateTimeOffset receivedAt, CancellationToken ct = default)
+    public async Task<PriorAuthResponse?> SubmitAsync(PriorAuthMapping mapping, string format, DateTimeOffset receivedAt, CancellationToken ct = default, Rules.EvaluatedRules? evaluated = null, string planType = "Unspecified")
     {
         var canonical = mapping.Request ?? throw new ArgumentException("Only mapped requests can be stored.");
-        if (PriorAuthRules.Validate(canonical).Any(e => e.Field == "Id")) throw new ArgumentException("A valid request ID is required.");
+        if (canonical.Id.Length is < 1 or > 64 || canonical.Id.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('-' or '_' or '.'))) throw new ArgumentException("A valid request ID is required.");
         if (await db.PriorAuthRequests.AnyAsync(r => r.Id == canonical.Id, ct)) return null;
+        if (evaluated is null)
+        {
+            var snapshot = await new Rules.RuleRegistry(db).SnapshotAsync(receivedAt, ct);
+            evaluated = await Rules.RuleRegistry.EvaluateAsync(snapshot, MediBridge.Core.Rules.RuleInput.From(canonical, planType), receivedAt, format, ct: ct);
+            mapping = new(canonical, evaluated.Live.Failures.Select(f => new PriorAuthError(f.RuleId, f.Field, f.SuggestedFix)).ToArray());
+        }
+        db.RuleEvaluations.Add(evaluated.Record);
         var record = new PriorAuthRecord { Id = canonical.Id, CanonicalJson = JsonSerializer.Serialize(canonical, PriorAuthJson.Options),
             Outcome = mapping.Outcome, SourceFormat = format, ValidationJson = JsonSerializer.Serialize(mapping.Errors, PriorAuthJson.Options) };
         var lifecycle = mapping.Outcome == "Accepted" ? new PriorAuthLifecycle(canonical.Priority!.Value, receivedAt.ToUniversalTime()) : null;

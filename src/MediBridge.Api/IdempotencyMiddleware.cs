@@ -15,7 +15,10 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
             && parts[1].Equals("pa", StringComparison.OrdinalIgnoreCase) && parts[3].Equals("decisions", StringComparison.OrdinalIgnoreCase);
         // Hash the exact case-sensitive request ID into a bounded scope; intake scopes remain unchanged.
         if (isDecision) scope = "pa-decision:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(parts[2])))[..48];
-        if (!isDecision && scope is not ("/api/claims" or "/api/x12/837" or "/api/pa/x12-278" or "/api/pa/fhir")) { await next(context); return; }
+        var isRuleMutation = parts.Length == 2 && parts[0].Equals("api", StringComparison.OrdinalIgnoreCase) && parts[1].Equals("rules", StringComparison.OrdinalIgnoreCase)
+            || parts.Length == 4 && parts[0].Equals("api", StringComparison.OrdinalIgnoreCase) && parts[1].Equals("rules", StringComparison.OrdinalIgnoreCase) && (parts[3].Equals("shadow", StringComparison.OrdinalIgnoreCase) || parts[3].Equals("promote", StringComparison.OrdinalIgnoreCase));
+        if (isRuleMutation && parts.Length == 4) scope = "rules:" + parts[3].ToLowerInvariant() + ":" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(parts[2])))[..40];
+        if (!isRuleMutation && !isDecision && scope is not ("/api/claims" or "/api/x12/837" or "/api/pa/x12-278" or "/api/pa/fhir")) { await next(context); return; }
         var values = context.Request.Headers["Idempotency-Key"];
         if (values.Count != 1 || string.IsNullOrWhiteSpace(values[0]) || values[0]!.Length > 128 || values[0]!.Any(c => c < '!' || c > '~'))
         { context.Response.StatusCode = 400; await context.Response.WriteAsJsonAsync(new { detail = "Provide one Idempotency-Key header containing 1–128 printable ASCII characters." }); return; }
@@ -30,7 +33,9 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
             await body.WriteAsync(buffer.AsMemory(0, count), context.RequestAborted);
         }
         var contentType = context.Request.ContentType ?? "";
-        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(contentType + "\n").Concat(body.ToArray()).ToArray()));
+        var planHeader = context.Request.Headers["X-Synthetic-Plan-Type"].ToString();
+        var metadata = contentType + "\n" + (planHeader.Length == 0 ? "" : "X-Synthetic-Plan-Type:" + planHeader + "\n");
+        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(metadata).Concat(body.ToArray()).ToArray()));
         var id = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(scope + "\n" + key)));
         await gate.Gate.WaitAsync(context.RequestAborted);
         var original = context.Response.Body;

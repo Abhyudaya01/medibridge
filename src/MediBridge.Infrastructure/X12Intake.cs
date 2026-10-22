@@ -1,5 +1,7 @@
 using System.Text.Json;
 using MediBridge.Core;
+using MediBridge.Core.Rules;
+using MediBridge.Infrastructure.Rules;
 using MediBridge.Core.X12;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,14 +13,35 @@ public sealed record X12IntakeResult(string? InterchangeControlNumber, string St
 
 public sealed class X12Intake(ClaimsDbContext db, ClaimWriteLock writeLock)
 {
-    public async Task<IReadOnlyList<X12IntakeResult>> ImportAsync(string input, DateTime timestamp, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<X12IntakeResult>> ImportAsync(string input, DateTime timestamp, CancellationToken cancellationToken = default, string planType = "Unspecified")
     {
         List<X12IntakeResult> results = [];
-        foreach (var interchange in X12Parser.Parse(input))
+        var receipt = new DateTimeOffset(DateTime.SpecifyKind(timestamp, DateTimeKind.Utc));
+        var snapshot = await new RuleRegistry(db).SnapshotAsync(receipt, cancellationToken);
+        foreach (var parsedInterchange in X12Parser.Parse(input, validateDomain: false))
         {
+            var evaluations = new Dictionary<X12ParsedClaim, EvaluatedRules>();
+            var errors = parsedInterchange.Errors.ToList();
+            foreach (var parsed in parsedInterchange.Claims)
+            {
+                parsed.Claim.PlanType = planType; parsed.Claim.RuleVersion = snapshot.Live.Version;
+                var evaluated = await RuleRegistry.EvaluateAsync(snapshot, RuleInput.From(parsed.Claim), receipt, "X12-837P", parsedInterchange.Accepted, cancellationToken);
+                evaluations[parsed] = evaluated;
+                foreach (var failure in evaluated.Live.Failures)
+                {
+                    var location = parsed.Locations?.GetValueOrDefault(failure.Field) ?? new("CLM", parsed.SegmentPosition, 0);
+                    var transaction = parsedInterchange.Transactions.FirstOrDefault(t => t.GroupControlNumber == parsed.GroupControlNumber && t.ControlNumber == parsed.TransactionControlNumber);
+                    errors.Add(new(location.SegmentId, location.SegmentPosition, location.ElementPosition, $"{failure.RuleId}: {failure.SuggestedFix}",
+                        TransactionPosition: transaction is null ? null : location.SegmentPosition - transaction.SegmentPosition + 1,
+                        GroupControlNumber: parsed.GroupControlNumber, TransactionControlNumber: parsed.TransactionControlNumber));
+                }
+            }
+            var interchange = parsedInterchange with { Errors = errors };
             var acknowledgment = X12Acknowledgments.Generate(interchange);
             if (!interchange.Accepted)
             {
+                db.RuleEvaluations.AddRange(evaluations.Where(e => e.Key.Claim.Id.Length is >= 1 and <= 64).Select(e => e.Value.Record));
+                await db.SaveChangesAsync(cancellationToken);
                 results.Add(new(interchange.ControlNumber, "Rejected", acknowledgment, interchange.Claims, []));
                 continue;
             }
@@ -47,7 +70,9 @@ public sealed class X12Intake(ClaimsDbContext db, ClaimWriteLock writeLock)
                             }
                             var key = ClaimRules.DuplicateKey(claim);
                             var duplicate = reserved.Contains(key) || await db.Claims.AnyAsync(c => EF.Property<string?>(c, "DuplicateKey") == key, cancellationToken);
-                            var result = ClaimProcessor.Process(claim, duplicate, Simulation.None, timestamp);
+                            var evaluation = evaluations[parsed];
+                            db.RuleEvaluations.Add(evaluation.Record);
+                            var result = ClaimProcessor.Process(claim, duplicate, Simulation.None, timestamp, evaluation.Live, snapshot.Live.Version);
                             db.Claims.Add(claim);
                             if (!duplicate) { db.Entry(claim).Property("DuplicateKey").CurrentValue = key; reserved.Add(key); }
                             // Preserve HI metadata and source controls without storing the raw interchange.

@@ -22,7 +22,7 @@ public class MigrationTests
         await db.InitializeAsync(); await db.InitializeAsync();
         Assert.Equal("CLM-LEGACY", (await db.Claims.SingleAsync()).Id);
         Assert.Equal("Original synthetic history", (await db.ClaimEvents.SingleAsync()).Detail);
-        Assert.Equal(4, (await db.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(5, (await db.Database.GetAppliedMigrationsAsync()).Count());
         Assert.True(File.Exists(path + ".legacy-backup.db"));
     }
     [Fact]
@@ -49,7 +49,7 @@ public class MigrationTests
         Assert.Equal(2, result.Timeline.Count(e => e.Stage == "Escalation"));
         Assert.All(result.Timeline.Skip(1), e => Assert.Equal(clock.UtcNow, e.Timestamp));
         await db.InitializeAsync(); Assert.Equal(0, await store.SweepAsync());
-        Assert.Equal(4, (await db.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(5, (await db.Database.GetAppliedMigrationsAsync()).Count());
     }
     [Fact]
     public async Task UnrecognizedSchemaIsNotBlindlyBaselined()

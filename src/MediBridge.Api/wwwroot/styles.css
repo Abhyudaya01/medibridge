@@ -82,3 +82,10 @@ textarea { width: 100%; display: block; margin-top: 8px; padding: 12px; border: 
 .badge.Breached, .badge.Denied { background: #fde9e6; color: #8c3027; }
 #sla-more { margin-top: 12px; }
 #pa-decision-form { align-items: end; }
+
+.rule-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 18px 0; }
+.rule-controls label { min-width: 200px; flex: 1; }
+.rule-impact-grid { display: grid; gap: 24px; margin-top: 24px; }
+#rules-definition { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 360px; overflow-y: auto; padding: 16px; background: #f3f7f9; font-size: .75rem; }
+#rules-definition-meta { overflow-wrap: anywhere; margin: 12px 0; }
+#rules-diff-note { margin: 18px 0; }
