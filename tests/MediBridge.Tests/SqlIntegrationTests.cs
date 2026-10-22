@@ -1,4 +1,7 @@
 using MediBridge.Core;
+using MediBridge.Core.PriorAuth;
+using MediBridge.Infrastructure.PriorAuth;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using MediBridge.Infrastructure;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
@@ -14,9 +17,11 @@ public sealed class SqlFactAttribute : FactAttribute
 }
 public sealed class SqlApiFactory : ClaimsApiFactory
 {
+    public ManualClock Clock { get; } = new();
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
+        builder.ConfigureServices(services => { services.RemoveAll<IClock>(); services.AddSingleton<IClock>(Clock); });
         builder.UseSetting("ConnectionStrings:Sql", Environment.GetEnvironmentVariable("MEDIBRIDGE_TEST_SQL"));
     }
 }
@@ -36,7 +41,7 @@ public class SqlIntegrationTests
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ClaimsDbContext>();
-            Assert.True(db.Database.IsSqlServer()); Assert.Equal(3, (await db.Database.GetAppliedMigrationsAsync()).Count());
+            Assert.True(db.Database.IsSqlServer()); Assert.Equal(4, (await db.Database.GetAppliedMigrationsAsync()).Count());
         }
         var dispatcher = factory.Services.GetRequiredService<OutboxDispatcher>();
         for (var i = 0; i < 8; i++) await Task.WhenAll(dispatcher.DispatchOneAsync(), dispatcher.DispatchOneAsync());
@@ -53,5 +58,25 @@ public class SqlIntegrationTests
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/pa/" + paId.ToLowerInvariant())).StatusCode);
         Assert.Equal(3, await saved.PriorAuthEvents.CountAsync(e => e.RequestId == paId));
         await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => saved.Database.ExecuteSqlRawAsync("UPDATE PriorAuthEvents SET Detail='Forbidden'"));
+        factory.Clock.UtcNow = factory.Clock.UtcNow.AddDays(10);
+        async Task Scan()
+        {
+            using var scope = factory.Services.CreateScope();
+            while (await scope.ServiceProvider.GetRequiredService<PriorAuthLifecycleStore>().SweepAsync() > 0) { }
+        }
+        await Task.WhenAll(Scan(), Scan());
+        Assert.Equal(2, await saved.PriorAuthEvents.CountAsync(e => e.RequestId == paId && e.Stage == "Escalation"));
+        client.DefaultRequestHeaders.Remove("Idempotency-Key"); client.DefaultRequestHeaders.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await client.PostAsJsonAsync($"/api/pa/{paId}/decisions", new DecisionCommand("Denied"))).StatusCode);
+        client.DefaultRequestHeaders.Remove("Idempotency-Key"); client.DefaultRequestHeaders.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
+        var decision = await client.PostAsJsonAsync($"/api/pa/{paId}/decisions", new DecisionCommand("Denied", "SyntheticPolicyNotMet"));
+        Assert.Equal(HttpStatusCode.OK, decision.StatusCode);
+        var replayDecision = await client.PostAsJsonAsync($"/api/pa/{paId}/decisions", new DecisionCommand("Denied", "SyntheticPolicyNotMet"));
+        Assert.Equal(await decision.Content.ReadAsStringAsync(), await replayDecision.Content.ReadAsStringAsync());
+        Assert.Equal(1, await saved.PriorAuthEvents.CountAsync(e => e.RequestId == paId && e.Stage == "Decision"));
+        var metrics = await client.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/reports/prior-auth-metrics");
+        Assert.Equal(1, metrics.GetProperty("metrics")[0].GetProperty("denied").GetInt32());
+        Assert.Equal(240d, metrics.GetProperty("metrics")[0].GetProperty("meanTurnaroundHours").GetDouble());
+
     }
 }

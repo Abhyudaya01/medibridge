@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using MediBridge.Core;
+using MediBridge.Core.PriorAuth;
 using MediBridge.Infrastructure;
 using MediBridge.Infrastructure.PriorAuth;
 using Microsoft.EntityFrameworkCore;
@@ -10,13 +11,16 @@ builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.C
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options => options.SwaggerDoc("v1", new Microsoft.OpenApi.OpenApiInfo
 {
-    Title = "MediBridge synthetic claims API", Version = "0.6.0",
+    Title = "MediBridge synthetic claims API", Version = "0.7.0",
     Description = "Synthetic data only. Not affiliated with any payer. No real member or provider data."
 }));
 builder.Services.AddSingleton<ClaimWriteLock>();
 builder.Services.AddScoped<ClaimStore>();
 builder.Services.AddScoped<X12Intake>();
 builder.Services.AddScoped<PriorAuthStore>();
+builder.Services.AddScoped<PriorAuthLifecycleStore>();
+builder.Services.AddSingleton<IClock, SystemClock>();
+builder.Services.AddHostedService<PriorAuthSlaWorker>();
 builder.Services.AddSingleton(TimeProvider.System);
 var faultOptions = builder.Configuration.GetSection("FaultInjection").Get<FaultOptions>() ?? new();
 if (faultOptions.TransientFailureRate is < 0 or > 1 || double.IsNaN(faultOptions.TransientFailureRate)
@@ -47,6 +51,7 @@ using (var scope = app.Services.CreateScope())
     await scope.ServiceProvider.GetRequiredService<ClaimsDbContext>().InitializeAsync();
     if (builder.Configuration.GetValue("Seed:Enabled", true))
         await SyntheticSeed.RunAsync(scope.ServiceProvider.GetRequiredService<ClaimStore>());
+    while (await scope.ServiceProvider.GetRequiredService<PriorAuthLifecycleStore>().SweepAsync() > 0) { }
 }
 
 app.UseMiddleware<IdempotencyMiddleware>();
@@ -55,7 +60,7 @@ app.UseStaticFiles();
 app.UseSwagger();
 app.UseSwaggerUI();
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok", version = "0.6.0" }));
+app.MapGet("/health", () => Results.Ok(new { status = "ok", version = "0.7.0" }));
 app.MapGet("/api/claims", async (ClaimsDbContext db, CancellationToken cancellationToken) =>
     Results.Ok(await db.Claims.AsNoTracking().OrderBy(c => c.Id).ToListAsync(cancellationToken)));
 

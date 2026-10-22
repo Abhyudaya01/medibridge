@@ -11,7 +11,7 @@
 <body>
   <main>
     <header>
-      <div class="brand"><span class="mark" aria-hidden="true">M</span><div><p class="eyebrow">Exception &amp; recovery engine</p><h1>MediBridge</h1></div><span class="version">v0.6.0</span></div>
+      <div class="brand"><span class="mark" aria-hidden="true">M</span><div><p class="eyebrow">Exception &amp; recovery engine</p><h1>MediBridge</h1></div><span class="version">v0.7.0</span></div>
       <p class="description">A healthcare claims and prior authorization exception and recovery engine on synthetic data. Explore deterministic claim validation, simulated downstream recovery, duplicate suppression, and rule-version review through an auditable transaction timeline.</p>
       <p class="notice"><strong>Synthetic data. Not affiliated with any payer.</strong> Use fabricated identifiers only. No external healthcare services are called.</p>
       <nav aria-label="Project links"><a href="/health">API health</a><a href="/swagger">Swagger API</a><a href="https://github.com/Abhyudaya01/medibridge">GitHub repository</a></nav>
@@ -88,14 +88,32 @@
       <div id="pa-result"></div>
       <form id="pa-lookup-form"><label>Recorded request ID<input id="pa-lookup-id" maxlength="64" required></label><button type="submit">Load request &amp; timeline</button></form>
     </section>
+    <section class="panel" aria-labelledby="sla-title">
+      <div class="section-heading"><div><p class="eyebrow">Prior authorization · decision clock</p><h2 id="sla-title">SLA board</h2></div><button id="sla-refresh" type="button">Refresh SLA &amp; metrics</button></div>
+      <p class="muted">Standard: 7 days from receipt. Expedited: 72 hours. At risk at 80%; breached at the deadline. Pending keeps the clock running. Simulation rules only.</p>
+      <div class="summary sla-summary"><article><p>On track</p><strong id="sla-ontrack">—</strong></article><article><p>At risk</p><strong id="sla-risk">—</strong></article><article><p>Breached</p><strong id="sla-breached">—</strong></article></div>
+      <p id="sla-status" role="status" aria-live="polite"></p>
+      <div class="table-scroll"><table><caption class="sr-only">Active synthetic prior authorization decision deadlines</caption><thead><tr><th>Request</th><th>Priority / decision</th><th>SLA</th><th>Received / due</th></tr></thead><tbody id="sla-rows"></tbody></table></div>
+      <button id="sla-more" type="button" hidden>Load more requests</button>
+      <form id="pa-decision-form" class="form-grid">
+        <label>Request ID<input id="pa-decision-id" maxlength="64" required></label>
+        <label>Decision<select id="pa-decision"><option>Approved</option><option>Denied</option><option>Pended</option></select></label>
+        <label>Denial reason<select id="pa-denial-reason" disabled><option value="">Select a reason</option><option>MissingDocumentation</option><option>ServiceNotSupported</option><option>DuplicateRequest</option><option>SyntheticPolicyNotMet</option></select></label>
+        <button id="pa-decision-submit" class="primary" type="submit">Record synthetic decision</button>
+      </form>
+      <p id="pa-decision-status" role="status" aria-live="polite"></p>
+      <h3>Decision metrics</h3><p class="muted">From the append-only audit log. Rates use finalized accepted intakes; pending and open requests are excluded from the rate and turnaround denominator. Turnaround runs from receipt to final decision.</p>
+      <div class="table-scroll"><table><caption class="sr-only">Prior authorization metrics by priority</caption><thead><tr><th>Priority</th><th>Received / finalized</th><th>Approval rate</th><th>Denial rate</th><th>Mean turnaround (h)</th><th>Median turnaround (h)</th></tr></thead><tbody id="pa-metrics-rows"></tbody></table></div>
+      <p id="pa-metrics-asof" class="muted"></p>
+    </section>
     <section class="panel" aria-labelledby="benchmarks-title">
       <h2 id="benchmarks-title">Reliability measurements</h2>
       <p>Explore measured crash recovery and HTTP submission load using fabricated claims. Local chaos checks kill and restart the processing host; a virtual clock advances retry deadlines. Load latency measures claim acceptance, with processing continuing asynchronously.</p>
       <p><a href="https://github.com/Abhyudaya01/medibridge/blob/main/benchmarks/RESULTS.md">Measured results and test environment</a> · <a href="https://github.com/Abhyudaya01/medibridge/blob/main/benchmarks/README.md">Run the harnesses</a></p>
       <p class="muted">Benchmark runs are separate from this demo. Live load requires approval for a temporary B1 window and verified restoration to F1.</p>
     </section>
-    <section aria-labelledby="roadmap-title"><h2 id="roadmap-title">Roadmap</h2><ol class="roadmap"><li><strong>Phase 1</strong><h3>Recovery workflows</h3><p>Extend the Phase 0 validation and audit foundation with richer exception handling.</p></li><li><strong>Phase 2</strong><h3>Prior authorization</h3><p>Intake X12 278 and FHIR R4 requests into one canonical view, then expand review workflows.</p></li><li><strong>Phase 3</strong><h3>Reliability &amp; measurement</h3><p>Expand workload coverage using the measured chaos and load foundation.</p></li></ol></section>
-    <footer>Portfolio simulation · Synthetic records only · Chunk 2a: prior authorization intake</footer>
+    <section aria-labelledby="roadmap-title"><h2 id="roadmap-title">Roadmap</h2><ol class="roadmap"><li><strong>Phase 1</strong><h3>Recovery workflows</h3><p>Extend the Phase 0 validation and audit foundation with richer exception handling.</p></li><li><strong>Phase 2</strong><h3>Prior authorization</h3><p>Intake X12 278 and FHIR R4 requests, record review decisions, and monitor audited SLA clocks.</p></li><li><strong>Phase 3</strong><h3>Reliability &amp; measurement</h3><p>Expand workload coverage using the measured chaos and load foundation.</p></li></ol></section>
+    <footer>Portfolio simulation · Synthetic records only · Chunk 2b: prior authorization decisions &amp; SLA clocks</footer>
   </main>
 </body>
 </html>

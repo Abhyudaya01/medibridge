@@ -12,7 +12,7 @@ namespace MediBridge.Tests;
 public class ClaimsApiFactory : WebApplicationFactory<Program>
 {
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"medibridge-tests-{Guid.NewGuid():N}.db");
-    protected override void ConfigureWebHost(IWebHostBuilder builder) => builder.UseSetting("Database:Path", _path).UseSetting("Outbox:Enabled", "false");
+    protected override void ConfigureWebHost(IWebHostBuilder builder) => builder.UseSetting("Database:Path", _path).UseSetting("Outbox:Enabled", "false").UseSetting("PriorAuthSla:Enabled", "false");
     public new HttpClient CreateClient() => CreateDefaultClient(new KeyHandler());
     private sealed class KeyHandler : DelegatingHandler
     {
